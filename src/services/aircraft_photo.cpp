@@ -379,6 +379,7 @@ bool fetchJsonMeta(const char* hex, MetaEntry* out) {
   char url[96];
   snprintf(url, sizeof(url), "https://api.planespotters.net/pub/photos/hex/%s", hex);
 
+  services::adsb::releaseTlsSession();
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(config::kAircraftPhotoTimeoutMs / 1000U);
@@ -499,6 +500,7 @@ bool fetchJpeg(const char* url, PsramPayload* out) {
     Serial.println("[photo] proxy url build failed; trying direct");
   }
 
+  services::adsb::releaseTlsSession();
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(config::kAircraftPhotoTimeoutMs / 1000U);

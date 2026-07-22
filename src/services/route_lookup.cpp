@@ -743,6 +743,7 @@ bool httpGetJson(const char* url, JsonDocument& doc, const char* worker_callsign
                   detailWorkerDebugStepTagImpl(), ESP.getFreeHeap());
   }
 
+  services::adsb::releaseTlsSession();
   WiFiClientSecure client;
   client.setInsecure();
   const uint32_t timeout_sec = (timeout_ms + 999U) / 1000U;

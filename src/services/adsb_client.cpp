@@ -158,6 +158,9 @@ bool readHttpPayload(HTTPClient& http, PsramPayload* payload, uint32_t timeout_m
   const unsigned long deadline_ms = millis() + timeout_ms;
   uint8_t buf[512];
   while (http.connected() || stream->available()) {
+    if (content_len > 0 && payload->len >= static_cast<size_t>(content_len)) {
+      break;  // Keep-alive: the server holds the socket open; don't wait for close.
+    }
     if (millis() >= deadline_ms) {
       if (config::kSerialTraceDebug) {
         Serial.printf("[fetch] http read timeout (%ums)\n", timeout_ms);
@@ -292,6 +295,29 @@ volatile unsigned long s_rate_limit_until_ms = 0;
 double s_fetch_lat = 0.0;
 double s_fetch_lon = 0.0;
 float s_fetch_radius_km = 0.0f;
+
+// Persistent poll connection: adsb.fi honors HTTP keep-alive, so a warm TLS
+// session turns each poll into a plain GET. A fresh handshake every poll
+// spiked ~75KB of internal RAM; at wide range (large payloads back to back)
+// that starved the ESP-Hosted SDIO RX pool and panicked the chip
+// (assert sdio_rx_get_buffer -> reboot loop). Only the fetch worker task
+// touches these objects.
+WiFiClientSecure* s_poll_client = nullptr;
+HTTPClient* s_poll_http = nullptr;
+volatile bool s_poll_session_release = false;
+
+void teardownPollSession() {
+  if (s_poll_http != nullptr) {
+    s_poll_http->end();
+    delete s_poll_http;
+    s_poll_http = nullptr;
+  }
+  if (s_poll_client != nullptr) {
+    s_poll_client->stop();
+    delete s_poll_client;
+    s_poll_client = nullptr;
+  }
+}
 
 float kmToNauticalMiles(float km) { return km / kKmPerNm; }
 
@@ -797,21 +823,26 @@ bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radiu
     return false;
   }
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  // WiFiClientSecure::setTimeout/setHandshakeTimeout take seconds, not milliseconds.
-  client.setTimeout(kFetchHttpTimeoutSec);
-  client.setHandshakeTimeout(kFetchHttpTimeoutSec);
-
-  HTTPClient http;
-  if (!http.begin(client, url)) {
+  if (s_poll_client == nullptr) {
+    s_poll_client = new WiFiClientSecure();
+    s_poll_client->setInsecure();
+    // WiFiClientSecure::setTimeout/setHandshakeTimeout take seconds, not milliseconds.
+    s_poll_client->setTimeout(kFetchHttpTimeoutSec);
+    s_poll_client->setHandshakeTimeout(kFetchHttpTimeoutSec);
+  }
+  if (s_poll_http == nullptr) {
+    s_poll_http = new HTTPClient();
+    s_poll_http->setReuse(true);  // keep-alive: handshake only on (re)connect
+  }
+  HTTPClient& http = *s_poll_http;
+  if (!http.begin(*s_poll_client, url)) {
     Serial.println("[adsb] http.begin failed");
+    teardownPollSession();
     return false;
   }
 
   http.setConnectTimeout(kFetchHttpTimeoutMs);
   http.setTimeout(kFetchHttpTimeoutMs);
-  http.setReuse(false);
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
     if (code == 429) {
@@ -836,22 +867,24 @@ bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radiu
         Serial.printf("[adsb] HTTP %d\n", code);
       }
     }
-    http.end();
-    client.stop();
+    teardownPollSession();
     services::https::drainTlsHeapAfterSession();
     return false;
   }
 
+  const int response_len = http.getSize();
   PsramPayload payload;
   if (!readHttpPayload(http, &payload, kFetchHttpTimeoutMs + 4000U)) {
-    http.end();
-    client.stop();
+    teardownPollSession();
+    services::https::drainTlsHeapAfterSession();
     return false;
   }
-  http.end();
-  client.stop();
+  http.end();  // reuse enabled: the socket stays connected for the next poll
+  if (response_len <= 0) {
+    // Close-delimited response (no Content-Length): the socket is spent.
+    teardownPollSession();
+  }
 
-  services::https::drainTlsHeapAfterSession();
   workerYield();
   if (!parseAircraftPayload(payload.data, payload.len, out, out_count)) {
     if (config::kSerialTraceDebug) {
@@ -869,10 +902,18 @@ bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radiu
 
 void fetchWorkerTask(void* /*arg*/) {
   for (;;) {
+    if (s_poll_session_release) {
+      s_poll_session_release = false;
+      teardownPollSession();
+      services::https::drainTlsHeapAfterSession();
+    }
     // A queued one-shot job (weather) takes priority over the next ADS-B poll:
     // it is user-initiated and rare, and on the radar screen ADS-B re-requests
     // every cycle, so checking it first is the only way weather ever gets a turn.
     if (s_bg_job != nullptr) {
+      // Free the poll session's internal RAM before another HTTPS handshake.
+      teardownPollSession();
+      services::https::drainTlsHeapAfterSession();
       s_bg_job_busy = true;
       BackgroundJob job = s_bg_job;
       job();
@@ -939,6 +980,8 @@ void cancelPendingFetch() {
     s_fetch_requested = false;
   }
 }
+
+void releaseTlsSession() { s_poll_session_release = true; }
 
 bool fetchRequest(double center_lat, double center_lon, float fetch_radius_km) {
   if (s_fetch_task == nullptr) {

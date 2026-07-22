@@ -168,6 +168,7 @@ bool fetchTimezoneBlocking(double lat, double lon) {
   url += "&longitude=";
   url += String(lon, 5);
 
+  services::adsb::releaseTlsSession();
   WiFiClientSecure client;
   client.setInsecure();
   client.setTimeout(config::kTzLookupTimeoutMs / 1000UL);

@@ -508,7 +508,8 @@ bool fetchWeatherBlocking(WeatherData* out) {
   bool ok = false;
   int code = 0;
   {
-    WiFiClientSecure client;
+    services::adsb::releaseTlsSession();
+  WiFiClientSecure client;
     client.setInsecure();
     client.setTimeout(kTimeoutSec);
     client.setHandshakeTimeout(kTimeoutSec);

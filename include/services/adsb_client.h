@@ -95,6 +95,11 @@ void cancelPendingFetch();
 /** Queue a non-blocking fetch; returns false if a fetch is already running. */
 bool fetchRequest(double center_lat, double center_lon, float fetch_radius_km);
 
+/** Ask the fetch worker to drop its keep-alive TLS session (frees ~40KB of
+ *  internal RAM within a few ms). Call before other HTTPS work so at most one
+ *  TLS session's buffers are held at a time. */
+void releaseTlsSession();
+
 /** True when a queued fetch finished and data is ready to display. */
 bool fetchReady();
 
