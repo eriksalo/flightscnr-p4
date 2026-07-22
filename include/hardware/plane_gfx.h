@@ -3,8 +3,6 @@
 #include <Arduino_GFX_Library.h>
 #include <cstdint>
 
-class ScaledCanvas;
-
 enum class TextDatum : uint8_t {
   TopLeft,
   TopCenter,
@@ -17,27 +15,27 @@ enum class TextDatum : uint8_t {
   BottomRight,
 };
 
-/** Drawing helpers and text layout on top of Arduino_GFX (DSI framebuffer).
+/** Drawing helpers and text layout on top of Arduino_GFX.
  *
- *  All coordinates are logical (390×390 design space). When attached to a
- *  ScaledCanvas, shapes/lines/text are rasterized at the physical resolution
- *  behind it (720×720 panel or physical-res sprite) for full-detail output;
- *  metrics keep returning logical units so layout code is unaffected.
- */
+ *  All coordinates are native panel pixels (720×720 DSI). For the hardware
+ *  panel, line strokes are written straight into the DSI framebuffer with a
+ *  single cache sync per stroke (fast enough for the per-frame radar sweep);
+ *  everything else delegates to the display's self-syncing draw methods. */
 class PlaneGfx {
  public:
   PlaneGfx() = default;
 
+  /** fb/fb_w/fb_h: the DSI framebuffer for the direct line path (hardware
+   *  panel only — sprites pass nullptr and use the canvas rasterizer). */
   void attach(Arduino_GFX* gfx, bool hardware_panel = false,
-              ScaledCanvas* scaled = nullptr) {
+              uint16_t* fb = nullptr, int16_t fb_w = 0, int16_t fb_h = 0) {
     gfx_ = gfx;
     hardware_panel_ = hardware_panel;
-    scaled_ = scaled;
-    font_ = nullptr;
-    phys_font_ = nullptr;
+    fb_ = fb;
+    fb_w_ = fb_w;
+    fb_h_ = fb_h;
   }
   Arduino_GFX* raw() const { return gfx_; }
-  ScaledCanvas* scaledCanvas() const { return scaled_; }
 
   void fillScreen(uint16_t color);
   void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
@@ -80,30 +78,23 @@ class PlaneGfx {
                             const uint16_t* src, int16_t src_stride);
 
  private:
-  /** True when text can render at physical resolution (scaled canvas attached,
-   *  a physical variant exists for the current font, textSize is 1). */
-  bool physTextActive() const;
-  /** Text bounds at physical resolution (physical font on the physical target). */
-  void physTextBounds(const char* text, int16_t* x1, int16_t* y1, uint16_t* w,
-                      uint16_t* h) const;
-
   Arduino_GFX* gfx_ = nullptr;
-  ScaledCanvas* scaled_ = nullptr;
   bool hardware_panel_ = false;
+  uint16_t* fb_ = nullptr;
+  int16_t fb_w_ = 0;
+  int16_t fb_h_ = 0;
   TextDatum datum_ = TextDatum::TopLeft;
   uint8_t write_depth_ = 0;
-  const GFXfont* font_ = nullptr;
-  const GFXfont* phys_font_ = nullptr;
-  uint8_t text_size_ = 1;
-  uint16_t text_fg_ = 0xFFFF;
-  uint16_t text_bg_ = 0x0000;
-  bool text_bg_set_ = false;
 
   /** Single flush to the hardware panel (contiguous src, stride == w). */
   void panelFlushBitmap(int16_t x, int16_t y, int16_t w, int16_t h,
                         const uint16_t* src);
   void drawLineInternal(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
                         uint16_t color);
+  /** Bresenham straight into fb_, no cache sync; tracks touched row range. */
+  void fbLineNoSync(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                    uint16_t color, int32_t* ymin, int32_t* ymax);
+  void fbSyncRows(int32_t y0, int32_t h);
   void mapDatum(const char* text, int16_t x, int16_t y, int16_t* out_x,
                 int16_t* out_y) const;
 };
@@ -121,11 +112,7 @@ class PanelSession {
   PlaneGfx* gfx_;
 };
 
-/** Off-screen buffer for radar / detail composition (PSRAM when available).
- *
- *  createSprite takes LOGICAL dimensions; the backing buffer is allocated at
- *  physical resolution (× 24/13) and all drawing through gfx() rasterizes at
- *  that resolution. push/copy helpers also take logical coordinates. */
+/** Off-screen compose buffer at native resolution (PSRAM when available). */
 class PlaneGfxSprite {
  public:
   explicit PlaneGfxSprite(PlaneGfx* parent);
@@ -136,8 +123,6 @@ class PlaneGfxSprite {
   bool ready() const { return buffer_ != nullptr; }
   int16_t width() const { return width_; }
   int16_t height() const { return height_; }
-  int16_t physWidth() const { return phys_width_; }
-  int16_t physHeight() const { return phys_height_; }
   const uint16_t* buffer() const { return buffer_; }
   uint16_t* bufferMut() { return buffer_; }
 
@@ -145,9 +130,9 @@ class PlaneGfxSprite {
   void pushSprite(int16_t x, int16_t y);
   /** Blit sprite skipping pixels equal to transparent_color (non-blocking overlay). */
   void pushSprite(int16_t x, int16_t y, uint16_t transparent_color);
-  /** Blit a logical-space region of this sprite to the panel at its own position. */
+  /** Blit a region of this sprite to the panel at its own position. */
   void pushRegion(int16_t x, int16_t y, int16_t w, int16_t h);
-  /** Copy a logical-space region from another same-size sprite into this one. */
+  /** Copy a region from another same-size sprite into this one. */
   void copyRegionFrom(const PlaneGfxSprite& src, int16_t x, int16_t y, int16_t w,
                       int16_t h);
 
@@ -155,10 +140,6 @@ class PlaneGfxSprite {
   PlaneGfx* parent_ = nullptr;
   PlaneGfx canvas_;
   uint16_t* buffer_ = nullptr;
-  Arduino_GFX* phys_canvas_ = nullptr;
-  ScaledCanvas* scaled_ = nullptr;
   int16_t width_ = 0;
   int16_t height_ = 0;
-  int16_t phys_width_ = 0;
-  int16_t phys_height_ = 0;
 };

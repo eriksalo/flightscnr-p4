@@ -62,12 +62,10 @@ constexpr unsigned long kSwipeNavDebounceMs = 300UL;
 constexpr gpio_num_t kKnobPinA = GPIO_NUM_1;
 constexpr gpio_num_t kKnobPinB = GPIO_NUM_2;
 
-// --- Display: logical design space (390×390, from the original T-Encoder Pro
-// layout). Layout code works in this space; ScaledCanvas maps coordinates by
-// 24/13 onto the 720×720 DSI panel and shapes/text/sprites rasterize at the
-// panel's native resolution (see hardware/scaled_canvas.h).
-constexpr int kDisplayWidth = 390;
-constexpr int kDisplayHeight = 390;
+// --- Display: native panel resolution. All layout is in panel pixels —
+// the fitted 3.4C glass is 720×720 (advertised 800×800 drops a center band).
+constexpr int kDisplayWidth = 720;
+constexpr int kDisplayHeight = 720;
 
 /** Flight detail / device settings return to radar; clock settings return to clock (ms). */
 constexpr unsigned long kSecondaryScreenTimeoutMs = 10000;

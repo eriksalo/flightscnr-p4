@@ -9,7 +9,6 @@
 
 #include "data/aircraft_icons_lookup.h"
 #include "hardware/plane_gfx.h"
-#include "hardware/scaled_canvas.h"
 #include "services/adsb_client.h"
 
 namespace ui::aircraft_icon {
@@ -212,51 +211,6 @@ bool draw(PlaneGfx& gfx, int cx, int cy, float heading_deg, uint16_t color,
   const float sin_h = sinf(rad);
   const float cos_h = cosf(rad);
   const int radius = (side + 1) / 2 + 1;
-
-  ScaledCanvas* scaled = gfx.scaledCanvas();
-  if (scaled != nullptr) {
-    // Physical-resolution sample: the source masks carry more detail than the
-    // logical grid can show, so sampling per physical pixel sharpens icons.
-    const int pcx = ScaledCanvas::map(cx);
-    const int pcy = ScaledCanvas::map(cy);
-    const int pradius = ScaledCanvas::mapLen(radius);
-    const float inv_pscale =
-        inv_scale * static_cast<float>(ScaledCanvas::kScaleDen) /
-        static_cast<float>(ScaledCanvas::kScaleNum);
-    for (int dy = -pradius; dy <= pradius; ++dy) {
-      for (int dx = -pradius; dx <= pradius; ++dx) {
-        const float lx = static_cast<float>(dx) * cos_h + static_cast<float>(dy) * sin_h;
-        const float ly = -static_cast<float>(dx) * sin_h + static_cast<float>(dy) * cos_h;
-        const float ix_f = lx * inv_pscale + src_half;
-        const float iy_f = ly * inv_pscale + src_half;
-        const int ix0 = static_cast<int>(floorf(ix_f));
-        const int iy0 = static_cast<int>(floorf(iy_f));
-        uint8_t a = 0;
-        for (int oy = 0; oy <= 1; ++oy) {
-          for (int ox = 0; ox <= 1; ++ox) {
-            const int ix = ix0 + ox;
-            const int iy = iy0 + oy;
-            if (ix < 0 || iy < 0 || ix >= data::aircraft_icons::kIconSide ||
-                iy >= data::aircraft_icons::kIconSide) {
-              continue;
-            }
-            const uint8_t s = pgm_read_byte(
-                &alpha[static_cast<size_t>(iy) * data::aircraft_icons::kIconSide +
-                       static_cast<size_t>(ix)]);
-            if (s > a) {
-              a = s;
-            }
-          }
-        }
-        if (a < data::aircraft_icons::kAlphaFloor) {
-          continue;
-        }
-        scaled->physFillPixel(pcx + dx, pcy + dy, color);
-      }
-    }
-    scaled->physSyncRect(pcy - pradius, 2 * pradius + 1);
-    return true;
-  }
 
   // Destination-space sample: every screen pixel is filled (no sparse upscale holes).
   // Max of nearest 4 source cells keeps thin rotor strokes from sparkling under rotate.

@@ -7,7 +7,6 @@
 #include "config.h"
 #include "hardware/buzzer.h"
 #include "hardware/pin_config.h"
-#include "hardware/scaled_canvas.h"
 
 // lib/waveshare_displays: GT911 over the shared I2C bus (SDA=7 SCL=8, RST=23).
 #include "gt911.h"
@@ -30,13 +29,17 @@ int16_t s_touch_start_y = 0;
 int16_t s_touch_last_x = 0;
 int16_t s_touch_last_y = 0;
 
-// Thresholds in logical 390px space (GT911 coords are mapped down below).
-constexpr int kSwipeMinPx = 70;
-constexpr int kTapMaxPx = 25;
+// Thresholds in native 720px panel space (GT911 reports panel coords).
+constexpr int kSwipeMinPx = 130;
+constexpr int kTapMaxPx = 46;
 
-/** GT911 reports physical panel coords; the UI works in the 390×390 logical
- *  space presented by ScaledCanvas. Invert that mapping. */
-int16_t physToLogical(uint16_t v) { return ScaledCanvas::unmap(v); }
+/** GT911 reports native panel coords — same space the UI works in. */
+int16_t physToLogical(uint16_t v) {
+  if (v >= config::kDisplayWidth) {
+    return static_cast<int16_t>(config::kDisplayWidth - 1);
+  }
+  return static_cast<int16_t>(v);
+}
 
 void queueSwipe(SwipeGesture gesture) {
   portENTER_CRITICAL(&s_input_mux);

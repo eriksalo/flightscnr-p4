@@ -5,7 +5,6 @@
 #include "hardware/display_brightness.h"
 #include "hardware/panel.h"
 #include "hardware/pin_config.h"
-#include "hardware/scaled_canvas.h"
 
 #include "displays_config.h"  // lib/waveshare_displays: JD9365 init table + DSI timings
 
@@ -13,7 +12,6 @@ namespace {
 
 Arduino_ESP32DSIPanel* s_dsi_panel = nullptr;
 Arduino_DSI_Display* s_panel = nullptr;
-ScaledCanvas* s_scaled = nullptr;
 
 }  // namespace
 
@@ -41,19 +39,13 @@ void displayInit() {
                   s_panel->height());
   }
 
-  // Clear the physical framebuffer once — the 10px border ring around the
-  // scaled logical area is never painted by app code.
   s_panel->fillScreen(RGB565_BLACK);
 
-  // The app lays out in its original 390x390 logical space; shapes and text
-  // rasterize at the panel's native resolution (see hardware/scaled_canvas.h).
-  s_scaled = new ScaledCanvas(s_panel, s_panel->getFramebuffer(),
-                              static_cast<int16_t>(s_panel->width()),
-                              static_cast<int16_t>(s_panel->height()),
-                              /*sync_cache=*/true);
-  s_scaled->begin();
-
-  tft.attach(s_scaled, true, s_scaled);
+  // Native-resolution rendering: the app lays out directly in panel pixels.
+  // The framebuffer pointer enables the direct line path (radar sweep).
+  tft.attach(s_panel, true, s_panel->getFramebuffer(),
+             static_cast<int16_t>(s_panel->width()),
+             static_cast<int16_t>(s_panel->height()));
   planeGfxPanelLockInit();
   tft.fillScreen(RGB565_BLACK);
 

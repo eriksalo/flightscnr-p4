@@ -10,8 +10,8 @@ namespace ui::aircraft_symbol {
 namespace {
 
 constexpr float kDegToRad = 0.01745329252f;
-constexpr int kFullSidePx = 28;
-constexpr int kCompactSidePx = 16;
+constexpr int kFullSidePx = 36;
+constexpr int kCompactSidePx = 22;
 
 /** Local +y = aft, -y = nose. Same basis as radar sweep / noseTip. */
 void mapLocal(int lx, int ly, int cx, int cy, float heading_deg, int* ox, int* oy) {
@@ -91,7 +91,7 @@ void drawWithOptionalIcon(PlaneGfx& gfx, int cx, int cy, float heading_deg, uint
 
 }  // namespace
 
-int radiusPx() { return 15; }
+int radiusPx() { return 20; }
 
 void draw(PlaneGfx& gfx, int cx, int cy, float heading_deg, uint16_t color,
           const services::adsb::Aircraft* aircraft) {

@@ -4,11 +4,10 @@
 #include <cmath>
 #include <cstring>
 
+#include <esp_cache.h>
 #include <esp_heap_caps.h>
 
-#include "hardware/display_font.h"
 #include "hardware/gfx_log.h"
-#include "hardware/scaled_canvas.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -45,7 +44,8 @@ class SpriteCanvas : public Arduino_GFX {
 
   void writeFillRectPreclipped(int16_t x, int16_t y, int16_t w, int16_t h,
                                uint16_t color) override {
-    // Clip here despite the contract — same rationale as ScaledCanvas.
+    // Clip here despite the contract — raw Bresenham output reaches this via
+    // Arduino_GFX::writeLine, which never clips.
     if (x < 0) {
       w = static_cast<int16_t>(w + x);
       x = 0;
@@ -203,54 +203,88 @@ void PlaneGfx::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t col
 }
 
 void PlaneGfx::fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
-  if (gfx_ == nullptr) {
-    return;
+  if (gfx_ != nullptr) {
+    gfx_->fillCircle(x, y, r, color);
   }
-  if (scaled_ != nullptr) {
-    // Rasterize at physical resolution: smooth edge instead of scaled steps.
-    scaled_->physicalTarget()->fillCircle(ScaledCanvas::map(x),
-                                          ScaledCanvas::map(y),
-                                          ScaledCanvas::mapLen(r), color);
-    return;
-  }
-  gfx_->fillCircle(x, y, r, color);
 }
 
 void PlaneGfx::drawCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
-  if (gfx_ == nullptr) {
-    return;
+  if (gfx_ != nullptr) {
+    gfx_->drawCircle(x, y, r, color);
   }
-  if (scaled_ != nullptr) {
-    // A logical 1px ring is ~24/13 physical px: fill the [r-1, r+1] annulus so
-    // the stroke keeps its weight but curves smoothly.
-    const int16_t pr = ScaledCanvas::mapLen(r);
-    scaled_->physicalTarget()->fillArc(ScaledCanvas::map(x), ScaledCanvas::map(y),
-                                       static_cast<int16_t>(pr + 1),
-                                       static_cast<int16_t>(std::max(1, pr - 1)),
-                                       0.0f, 360.0f, color);
-    return;
-  }
-  gfx_->drawCircle(x, y, r, color);
 }
 
 void PlaneGfx::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
                             int16_t x2, int16_t y2, uint16_t color) {
-  if (gfx_ == nullptr) {
+  if (gfx_ != nullptr) {
+    gfx_->fillTriangle(x0, y0, x1, y1, x2, y2, color);
+  }
+}
+
+void PlaneGfx::fbSyncRows(int32_t y0, int32_t h) {
+  if (fb_ == nullptr || h <= 0) {
     return;
   }
-  if (scaled_ != nullptr) {
-    scaled_->physicalTarget()->fillTriangle(
-        ScaledCanvas::map(x0), ScaledCanvas::map(y0), ScaledCanvas::map(x1),
-        ScaledCanvas::map(y1), ScaledCanvas::map(x2), ScaledCanvas::map(y2),
-        color);
+  const int32_t a = std::max<int32_t>(0, y0);
+  const int32_t b = std::min<int32_t>(fb_h_, y0 + h);
+  if (b <= a) {
     return;
   }
-  gfx_->fillTriangle(x0, y0, x1, y1, x2, y2, color);
+  uint16_t* start = fb_ + static_cast<size_t>(a) * static_cast<size_t>(fb_w_);
+  const size_t bytes =
+      static_cast<size_t>(b - a) * static_cast<size_t>(fb_w_) * sizeof(uint16_t);
+  esp_cache_msync(start, bytes,
+                  ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+}
+
+void PlaneGfx::fbLineNoSync(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                            uint16_t color, int32_t* ymin, int32_t* ymax) {
+  const bool steep = std::abs(y1 - y0) > std::abs(x1 - x0);
+  if (steep) {
+    std::swap(x0, y0);
+    std::swap(x1, y1);
+  }
+  if (x0 > x1) {
+    std::swap(x0, x1);
+    std::swap(y0, y1);
+  }
+  const int32_t dx = x1 - x0;
+  const int32_t dy = std::abs(y1 - y0);
+  const int32_t ystep = (y0 < y1) ? 1 : -1;
+  int32_t err = dx / 2;
+  int32_t y = y0;
+  for (int32_t x = x0; x <= x1; ++x) {
+    const int32_t px = steep ? y : x;
+    const int32_t py = steep ? x : y;
+    if (px >= 0 && py >= 0 && px < fb_w_ && py < fb_h_) {
+      fb_[static_cast<size_t>(py) * static_cast<size_t>(fb_w_) +
+          static_cast<size_t>(px)] = color;
+      if (py < *ymin) {
+        *ymin = py;
+      }
+      if (py > *ymax) {
+        *ymax = py;
+      }
+    }
+    err -= dy;
+    if (err < 0) {
+      y += ystep;
+      err += dx;
+    }
+  }
 }
 
 void PlaneGfx::drawLineInternal(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
                                 uint16_t color) {
-  // On a ScaledCanvas the virtual writeLine override rasterizes physically.
+  if (hardware_panel_ && fb_ != nullptr) {
+    int32_t ymin = fb_h_;
+    int32_t ymax = -1;
+    fbLineNoSync(x0, y0, x1, y1, color, &ymin, &ymax);
+    if (ymax >= ymin) {
+      fbSyncRows(ymin, ymax - ymin + 1);
+    }
+    return;
+  }
   GfxWriteLineAccess::writeLineOn(gfx_, x0, y0, x1, y1, color);
 }
 
@@ -278,18 +312,28 @@ void PlaneGfx::drawWideLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
   if (opened_here) {
     startWrite();
   }
-  if (scaled_ != nullptr) {
-    scaled_->physWideLine(ScaledCanvas::map(x0), ScaledCanvas::map(y0),
-                          ScaledCanvas::map(x1), ScaledCanvas::map(y1),
-                          ScaledCanvas::mapF(half_width), color);
-  } else {
-    const int steps = std::max(1, static_cast<int>(half_width * 2.0f + 0.5f));
-    const float offset = -half_width;
+  const int steps = std::max(1, static_cast<int>(half_width * 2.0f + 0.5f));
+  const float offset = -half_width;
+  if (hardware_panel_ && fb_ != nullptr) {
+    // All offset strokes into the framebuffer, then one cache sync.
+    int32_t ymin = fb_h_;
+    int32_t ymax = -1;
     for (int i = 0; i < steps; ++i) {
       const float t = offset + static_cast<float>(i);
       const int ox = static_cast<int>(std::lround(t));
       const int oy = static_cast<int>(std::lround(-t));
-      drawLineInternal(x0 + ox, y0 + oy, x1 + ox, y1 + oy, color);
+      fbLineNoSync(x0 + ox, y0 + oy, x1 + ox, y1 + oy, color, &ymin, &ymax);
+    }
+    if (ymax >= ymin) {
+      fbSyncRows(ymin, ymax - ymin + 1);
+    }
+  } else {
+    for (int i = 0; i < steps; ++i) {
+      const float t = offset + static_cast<float>(i);
+      const int ox = static_cast<int>(std::lround(t));
+      const int oy = static_cast<int>(std::lround(-t));
+      GfxWriteLineAccess::writeLineOn(gfx_, x0 + ox, y0 + oy, x1 + ox, y1 + oy,
+                                      color);
     }
   }
   if (opened_here) {
@@ -305,32 +349,24 @@ uint16_t PlaneGfx::color565(uint8_t r, uint8_t g, uint8_t b) const {
 }
 
 void PlaneGfx::setTextColor(uint16_t fg) {
-  text_fg_ = fg;
-  text_bg_set_ = false;
   if (gfx_ != nullptr) {
     gfx_->setTextColor(fg);
   }
 }
 
 void PlaneGfx::setTextColor(uint16_t fg, uint16_t bg) {
-  text_fg_ = fg;
-  text_bg_ = bg;
-  text_bg_set_ = true;
   if (gfx_ != nullptr) {
     gfx_->setTextColor(fg, bg);
   }
 }
 
 void PlaneGfx::setTextSize(uint8_t size) {
-  text_size_ = size;
   if (gfx_ != nullptr) {
     gfx_->setTextSize(size);
   }
 }
 
 void PlaneGfx::setFont(const GFXfont* font) {
-  font_ = font;
-  phys_font_ = displayFontPhysical(font);
   if (gfx_ != nullptr) {
     gfx_->setFont(font);
   }
@@ -344,19 +380,6 @@ void PlaneGfx::setTextWrap(bool wrap) {
   }
 }
 
-bool PlaneGfx::physTextActive() const {
-  return scaled_ != nullptr && phys_font_ != nullptr && text_size_ <= 1;
-}
-
-void PlaneGfx::physTextBounds(const char* text, int16_t* x1, int16_t* y1,
-                              uint16_t* w, uint16_t* h) const {
-  Arduino_GFX* target = scaled_->physicalTarget();
-  target->setTextWrap(false);
-  target->setTextSize(1);
-  target->setFont(phys_font_);
-  target->getTextBounds(text, 0, 0, x1, y1, w, h);
-}
-
 int PlaneGfx::textWidth(const char* text) const {
   if (gfx_ == nullptr || text == nullptr) {
     return 0;
@@ -365,10 +388,6 @@ int PlaneGfx::textWidth(const char* text) const {
   int16_t y1 = 0;
   uint16_t w = 0;
   uint16_t h = 0;
-  if (physTextActive()) {
-    physTextBounds(text, &x1, &y1, &w, &h);
-    return ScaledCanvas::unmapLenCeil(w);
-  }
   gfx_->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
   return static_cast<int>(w);
 }
@@ -381,10 +400,6 @@ int PlaneGfx::fontHeight() const {
   int16_t y1 = 0;
   uint16_t w = 0;
   uint16_t h = 0;
-  if (physTextActive()) {
-    physTextBounds("Ag", &x1, &y1, &w, &h);
-    return ScaledCanvas::unmapLenCeil(h);
-  }
   gfx_->getTextBounds("Ag", 0, 0, &x1, &y1, &w, &h);
   return static_cast<int>(h);
 }
@@ -447,81 +462,6 @@ void PlaneGfx::drawString(const char* text, int16_t x, int16_t y) {
   if (gfx_ == nullptr || text == nullptr) {
     return;
   }
-
-  if (physTextActive()) {
-    // Full-resolution text: datum math and glyph rasterization both happen at
-    // physical scale with the physical font, anchored at the mapped position.
-    int16_t x1 = 0;
-    int16_t y1 = 0;
-    uint16_t w = 0;
-    uint16_t h = 0;
-    physTextBounds(text, &x1, &y1, &w, &h);
-
-    int32_t draw_x = ScaledCanvas::map(x);
-    int32_t draw_y = ScaledCanvas::map(y);
-    const int32_t half_w = static_cast<int32_t>(w) / 2;
-    const int32_t half_h = static_cast<int32_t>(h) / 2;
-    switch (datum_) {
-      case TextDatum::TopLeft:
-        draw_x -= x1;
-        draw_y -= y1;
-        break;
-      case TextDatum::TopCenter:
-        draw_x -= x1 + half_w;
-        draw_y -= y1;
-        break;
-      case TextDatum::TopRight:
-        draw_x -= x1 + static_cast<int32_t>(w);
-        draw_y -= y1;
-        break;
-      case TextDatum::MiddleLeft:
-        draw_x -= x1;
-        draw_y -= y1 + half_h;
-        break;
-      case TextDatum::MiddleCenter:
-        draw_x -= x1 + half_w;
-        draw_y -= y1 + half_h;
-        break;
-      case TextDatum::MiddleRight:
-        draw_x -= x1 + static_cast<int32_t>(w);
-        draw_y -= y1 + half_h;
-        break;
-      case TextDatum::BottomLeft:
-        draw_x -= x1;
-        draw_y -= y1 + static_cast<int32_t>(h);
-        break;
-      case TextDatum::BottomCenter:
-        draw_x -= x1 + half_w;
-        draw_y -= y1 + static_cast<int32_t>(h);
-        break;
-      case TextDatum::BottomRight:
-        draw_x -= x1 + static_cast<int32_t>(w);
-        draw_y -= y1 + static_cast<int32_t>(h);
-        break;
-    }
-
-    Arduino_GFX* target = scaled_->physicalTarget();
-    if (text_bg_set_) {
-      target->setTextColor(text_fg_, text_bg_);
-    } else {
-      target->setTextColor(text_fg_);
-    }
-    target->setCursor(static_cast<int16_t>(draw_x), static_cast<int16_t>(draw_y));
-    if (hardware_panel_) {
-      target->print(text);
-      return;
-    }
-    const bool opened_here = write_depth_ == 0;
-    if (opened_here) {
-      startWrite();
-    }
-    target->print(text);
-    if (opened_here) {
-      endWrite();
-    }
-    return;
-  }
-
   int16_t draw_x = x;
   int16_t draw_y = y;
   mapDatum(text, x, y, &draw_x, &draw_y);
@@ -685,12 +625,8 @@ PlaneGfxSprite::~PlaneGfxSprite() { deleteSprite(); }
 
 bool PlaneGfxSprite::createSprite(int16_t w, int16_t h) {
   deleteSprite();
-  const int16_t pw = ScaledCanvas::map(w);
-  const int16_t ph = ScaledCanvas::map(h);
-  const size_t bytes =
-      static_cast<size_t>(pw) * static_cast<size_t>(ph) * sizeof(uint16_t);
-  buffer_ = static_cast<uint16_t*>(
-      heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  const size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(h) * sizeof(uint16_t);
+  buffer_ = static_cast<uint16_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (buffer_ == nullptr) {
     buffer_ = static_cast<uint16_t*>(heap_caps_malloc(bytes, MALLOC_CAP_8BIT));
   }
@@ -699,26 +635,15 @@ bool PlaneGfxSprite::createSprite(int16_t w, int16_t h) {
   }
   width_ = w;
   height_ = h;
-  phys_width_ = pw;
-  phys_height_ = ph;
-  phys_canvas_ = new SpriteCanvas(buffer_, pw, ph);
-  scaled_ = new ScaledCanvas(phys_canvas_, buffer_, pw, ph, /*sync_cache=*/false,
-                             w, h);
-  scaled_->begin();
-  canvas_.attach(scaled_, false, scaled_);
+  canvas_.attach(new SpriteCanvas(buffer_, w, h));
   canvas_.setTextWrap(false);
   return true;
 }
 
 void PlaneGfxSprite::deleteSprite() {
-  canvas_.attach(nullptr);
-  if (scaled_ != nullptr) {
-    delete scaled_;
-    scaled_ = nullptr;
-  }
-  if (phys_canvas_ != nullptr) {
-    delete phys_canvas_;
-    phys_canvas_ = nullptr;
+  if (canvas_.raw() != nullptr) {
+    delete canvas_.raw();
+    canvas_.attach(nullptr);
   }
   if (buffer_ != nullptr) {
     heap_caps_free(buffer_);
@@ -726,48 +651,26 @@ void PlaneGfxSprite::deleteSprite() {
   }
   width_ = 0;
   height_ = 0;
-  phys_width_ = 0;
-  phys_height_ = 0;
 }
 
 void PlaneGfxSprite::pushSprite(int16_t x, int16_t y) {
-  if (parent_ == nullptr || buffer_ == nullptr) {
+  if (parent_ == nullptr || buffer_ == nullptr || parent_->raw() == nullptr) {
     return;
   }
-  ScaledCanvas* panel = parent_->scaledCanvas();
-  if (panel == nullptr) {
-    return;
-  }
-  parent_->startWrite();
-  panel->blitPhysical(ScaledCanvas::map(x), ScaledCanvas::map(y), buffer_,
-                      phys_width_, phys_height_, phys_width_);
-  parent_->endWrite();
+  parent_->draw16bitRGBBitmap(x, y, buffer_, width_, height_);
 }
 
 void PlaneGfxSprite::pushSprite(int16_t x, int16_t y, uint16_t transparent_color) {
-  if (parent_ == nullptr || buffer_ == nullptr) {
+  if (parent_ == nullptr || buffer_ == nullptr || parent_->raw() == nullptr) {
     return;
   }
-  ScaledCanvas* panel = parent_->scaledCanvas();
-  if (panel == nullptr) {
-    return;
-  }
-  parent_->startWrite();
-  panel->blitPhysicalTransparent(ScaledCanvas::map(x), ScaledCanvas::map(y),
-                                 buffer_, phys_width_, phys_height_, phys_width_,
-                                 transparent_color);
-  parent_->endWrite();
+  parent_->draw16bitRGBBitmap(x, y, buffer_, transparent_color, width_, height_);
 }
 
 void PlaneGfxSprite::pushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
   if (parent_ == nullptr || buffer_ == nullptr || w <= 0 || h <= 0) {
     return;
   }
-  ScaledCanvas* panel = parent_->scaledCanvas();
-  if (panel == nullptr) {
-    return;
-  }
-  // Clip in logical space, then blit the mapped physical region 1:1.
   if (x < 0) {
     w = static_cast<int16_t>(w + x);
     x = 0;
@@ -785,24 +688,17 @@ void PlaneGfxSprite::pushRegion(int16_t x, int16_t y, int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) {
     return;
   }
-  const int16_t px0 = ScaledCanvas::map(x);
-  const int16_t py0 = ScaledCanvas::map(y);
-  const int16_t px1 = ScaledCanvas::map(x + w);
-  const int16_t py1 = ScaledCanvas::map(y + h);
-  parent_->startWrite();
-  panel->blitPhysical(
-      px0, py0,
-      buffer_ + static_cast<size_t>(py0) * static_cast<size_t>(phys_width_) + px0,
-      static_cast<int16_t>(px1 - px0), static_cast<int16_t>(py1 - py0),
-      phys_width_);
-  parent_->endWrite();
+  parent_->blitRegionFromBuffer(
+      x, y, w, h,
+      buffer_ + static_cast<size_t>(y) * static_cast<size_t>(width_) +
+          static_cast<size_t>(x),
+      width_);
 }
 
 void PlaneGfxSprite::copyRegionFrom(const PlaneGfxSprite& src, int16_t x,
                                     int16_t y, int16_t w, int16_t h) {
-  if (buffer_ == nullptr || src.buffer_ == nullptr ||
-      src.phys_width_ != phys_width_ || src.phys_height_ != phys_height_ ||
-      w <= 0 || h <= 0) {
+  if (buffer_ == nullptr || src.buffer_ == nullptr || src.width_ != width_ ||
+      src.height_ != height_ || w <= 0 || h <= 0) {
     return;
   }
   if (x < 0) {
@@ -822,16 +718,12 @@ void PlaneGfxSprite::copyRegionFrom(const PlaneGfxSprite& src, int16_t x,
   if (w <= 0 || h <= 0) {
     return;
   }
-  const int16_t px0 = ScaledCanvas::map(x);
-  const int16_t py0 = ScaledCanvas::map(y);
-  const int16_t px1 = ScaledCanvas::map(x + w);
-  const int16_t py1 = ScaledCanvas::map(y + h);
-  const size_t row_bytes = static_cast<size_t>(px1 - px0) * sizeof(uint16_t);
-  for (int16_t py = py0; py < py1; ++py) {
-    memcpy(buffer_ + static_cast<size_t>(py) * static_cast<size_t>(phys_width_) +
-               px0,
-           src.buffer_ + static_cast<size_t>(py) * static_cast<size_t>(phys_width_) +
-               px0,
+  const size_t row_bytes = static_cast<size_t>(w) * sizeof(uint16_t);
+  for (int16_t row = y; row < y + h; ++row) {
+    memcpy(buffer_ + static_cast<size_t>(row) * static_cast<size_t>(width_) +
+               static_cast<size_t>(x),
+           src.buffer_ + static_cast<size_t>(row) * static_cast<size_t>(width_) +
+               static_cast<size_t>(x),
            row_bytes);
   }
 }

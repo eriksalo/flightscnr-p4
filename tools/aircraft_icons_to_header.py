@@ -24,7 +24,7 @@ except ImportError:
     print("Pillow required: pip install Pillow")
     sys.exit(1)
 
-ICON_SIDE = 32
+ICON_SIDE = 64
 # Soft edges below this are treated as transparent at draw time too.
 ALPHA_FLOOR = 24
 
@@ -165,7 +165,7 @@ def to_alpha_mask(image: Image.Image, side: int) -> bytes:
     wh = max(1, int(round(h * work_scale)))
     work = coverage.resize((ww, wh), Image.Resampling.LANCZOS)
 
-    solid = sum(1 for v in work.get_flattened_data() if v >= ALPHA_FLOOR)
+    solid = sum(1 for v in work.getdata() if v >= ALPHA_FLOOR)
     fill = solid / float(ww * wh)
     # Keep silhouettes recognizable: thicken wireframes, not flood-fill them.
     if fill < 0.12:

@@ -24,9 +24,5 @@ UiTextStyle displayFontPickForHeight(PlaneGfx& gfx, int target_px, size_t lo_ind
 
 void displayFontApply(PlaneGfx& gfx, UiTextStyle style);
 
-/** Physical-resolution (× 24/13) variant of a logical font, for full-res text
- *  on the 720×720 panel; nullptr when no physical variant exists. */
-const GFXfont* displayFontPhysical(const GFXfont* logical);
-
 int displayFontHeight(PlaneGfx& gfx, UiTextStyle style);
 int displayFontWidth(PlaneGfx& gfx, UiTextStyle style, const char* text);

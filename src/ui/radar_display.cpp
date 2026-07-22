@@ -467,6 +467,11 @@ void drawAircraft() {
   }
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;
+    // Far-first order: the nearest kMaxTaggedAircraft are at the tail.
+    if (draw_count - d > radar::kMaxTaggedAircraft &&
+        !services::alert::isHighlighted(planes[i])) {
+      continue;
+    }
     drawAircraftTag(items[d].x, items[d].y, planes[i]);
   }
 }
@@ -929,6 +934,11 @@ void drawAircraftInRect(const IntRect& dirty) {
   }
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;
+    // Far-first order: the nearest kMaxTaggedAircraft are at the tail.
+    if (draw_count - d > radar::kMaxTaggedAircraft &&
+        !services::alert::isHighlighted(planes[i])) {
+      continue;
+    }
     drawAircraftTag(items[d].x, items[d].y, planes[i]);
   }
 }
