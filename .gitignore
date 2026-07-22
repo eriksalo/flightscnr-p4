@@ -1,0 +1,27 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Build / release outputs
+release/
+*.merged.bin
+compile_commands.json
+
+# Local reference clones (not part of this project)
+_ref/
+
+# Large Pi source silhouettes (generated header is committed)
+assets/aircraft_icons/*.png
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+tools/.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+# Local reference repos (FlightScnr_Pi, Waveshare demos)
+reference/

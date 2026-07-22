@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>FlightScnr Firmware Installer</title>
+    <meta
+      name="description"
+      content="FlightScnr firmware installer for LilyGO T-Encoder Pro"
+    />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="color-scheme" content="dark light" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="content">
+      <h1>FlightScnr Firmware Installer</h1>
+      <p class="tagline">
+        Installer powered by
+        <a href="https://github.com/espressif/esptool-js">esptool-js</a> 0.5.7.
+      </p>
+
+      <fieldset id="install-mode" class="install-mode">
+        <legend class="visually-hidden">Install mode</legend>
+        <label class="install-mode-option">
+          <input
+            type="radio"
+            name="install-mode"
+            id="install-mode-full"
+            value="full"
+          />
+          Full install
+        </label>
+        <label class="install-mode-option" id="install-mode-app-label">
+          <input
+            type="radio"
+            name="install-mode"
+            id="install-mode-app"
+            value="app"
+            checked
+          />
+          Update app only
+        </label>
+      </fieldset>
+
+      <div class="release-picker">
+        <label for="release-select">Firmware version</label>
+        <select id="release-select" disabled>
+          <option>Loading versions...</option>
+        </select>
+      </div>
+
+      <p class="button-row">
+        <button id="connect-btn" type="button">Connect</button>
+        <button id="flash-latest-btn" type="button" disabled>Install</button>
+        <button id="disconnect-btn" type="button" class="secondary" disabled>
+          Disconnect
+        </button>
+        <button id="erase-btn" type="button" class="danger" disabled>
+          Erase flash
+        </button>
+      </p>
+
+      <dialog id="erase-dialog">
+        <h2>Erase entire flash?</h2>
+        <p>
+          This will permanently erase <strong>all 16&nbsp;MB</strong> of flash
+          memory on the ESP32. Firmware, Wi‑Fi credentials, saved settings, and
+          route cache will be deleted.
+        </p>
+        <p>The board will not run FlightScnr until you flash firmware again.</p>
+        <p class="button-row">
+          <button id="erase-cancel-btn" type="button" class="secondary">
+            Cancel
+          </button>
+          <button id="erase-confirm-btn" type="button" class="danger">
+            Erase flash
+          </button>
+        </p>
+      </dialog>
+
+      <p class="meta" id="release-meta">Loading latest release&hellip;</p>
+      <p class="meta" id="release-help"></p>
+      <p class="status-line"><span id="status">Not connected</span></p>
+
+      <div id="progress-wrap">
+        <progress id="progress" max="100" value="0"></progress>
+        <div id="progress-label"></div>
+      </div>
+
+      <h2>Before you start</h2>
+      <ol class="steps">
+        <li>Use <strong>Chrome</strong> on a desktop computer or laptop.</li>
+        <li>Connect the <a href="https://www.lilygo.cc/zo4apl">LILYGO T-Encoder Pro</a> board to your computer with a USB cable.</li>
+        <li>
+          If the USB port does not appear: push the screen down (<strong>BOOT</strong>) and hold, tap <strong>RESET</strong> on the back of the board,
+          then click <strong>Connect</strong>.
+        </li>
+        <li>
+          If <strong>Connect</strong> or <strong>Install</strong> fails: hold the screen
+          pressed in (<strong>BOOT</strong>), click <strong>Connect</strong> or
+          <strong>Install</strong> again, and release once flashing begins.
+        </li>
+        <li>
+          Do not hold the screen in while plugging in USB - it is the
+          <strong>BOOT</strong> button (GPIO&nbsp;0) and can enter download mode
+          unintentionally.
+        </li>
+      </ol>
+      <br>
+      <p class="meta">
+        Choose <strong>Full install</strong> for a first-time install, after
+        <strong>Erase flash</strong>, or when replacing factory firmware (flashes at
+        <strong>0x0</strong>; clears Wi‑Fi and saved settings).
+        <strong>Update app only</strong> flashes the application at
+        <strong>0x10000</strong> and keeps settings when bootloader and partitions
+        already match.
+      </p>
+
+      <div class="log-section">
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </div>
+
+      <div class="footer">
+        <a href="https://github.com/yashmulgaonkar/FlightScnr">FlightScnr by Yash Mulgaonkar</a>
+        &middot;
+        <a href="https://github.com/yashmulgaonkar/FlightScnr/releases">Releases</a>
+      </div>
+    </div>
+    <script type="module" src="flasher.js"></script>
+  </body>
+</html>

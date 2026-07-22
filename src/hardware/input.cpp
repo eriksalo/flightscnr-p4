@@ -1,0 +1,164 @@
+#include "hardware/input.h"
+
+#include <Arduino.h>
+
+#include <cmath>
+
+#include "config.h"
+#include "hardware/buzzer.h"
+#include "hardware/pin_config.h"
+#include "hardware/scaled_canvas.h"
+
+// lib/waveshare_displays: GT911 over the shared I2C bus (SDA=7 SCL=8, RST=23).
+#include "gt911.h"
+#include "i2c.h"
+
+namespace {
+
+portMUX_TYPE s_input_mux = portMUX_INITIALIZER_UNLOCKED;
+
+volatile int16_t s_tap_x = -1;
+volatile int16_t s_tap_y = -1;
+volatile SwipeGesture s_swipe_pending = SwipeNone;
+
+esp_lcd_touch_handle_t s_touch = nullptr;
+bool s_touch_ready = false;
+bool s_touch_was_down = false;
+bool s_touch_tracking = false;
+int16_t s_touch_start_x = 0;
+int16_t s_touch_start_y = 0;
+int16_t s_touch_last_x = 0;
+int16_t s_touch_last_y = 0;
+
+// Thresholds in logical 390px space (GT911 coords are mapped down below).
+constexpr int kSwipeMinPx = 70;
+constexpr int kTapMaxPx = 25;
+
+/** GT911 reports physical panel coords; the UI works in the 390×390 logical
+ *  space presented by ScaledCanvas. Invert that mapping. */
+int16_t physToLogical(uint16_t v) { return ScaledCanvas::unmap(v); }
+
+void queueSwipe(SwipeGesture gesture) {
+  portENTER_CRITICAL(&s_input_mux);
+  s_swipe_pending = gesture;
+  portEXIT_CRITICAL(&s_input_mux);
+}
+
+void queueTap(int16_t x, int16_t y) {
+  portENTER_CRITICAL(&s_input_mux);
+  s_tap_x = x;
+  s_tap_y = y;
+  portEXIT_CRITICAL(&s_input_mux);
+}
+
+void finishTouchGesture() {
+  const int dx = s_touch_last_x - s_touch_start_x;
+  const int dy = s_touch_last_y - s_touch_start_y;
+  const int adx = std::abs(dx);
+  const int ady = std::abs(dy);
+
+  if (dx <= -kSwipeMinPx && ady * 2 < adx) {
+    queueSwipe(SwipeLeft);
+  } else if (dx >= kSwipeMinPx && ady * 2 < adx) {
+    queueSwipe(SwipeRight);
+  } else if (dy >= kSwipeMinPx && adx * 2 < ady) {
+    queueSwipe(SwipeDown);
+  } else if (dy <= -kSwipeMinPx && adx * 2 < ady) {
+    queueSwipe(SwipeUp);
+  } else if (adx <= kTapMaxPx && ady <= kTapMaxPx) {
+    queueTap(s_touch_last_x, s_touch_last_y);
+  }
+}
+
+void pollTouchGt911() {
+  uint16_t x[ESP_LCD_TOUCH_MAX_POINTS] = {};
+  uint16_t y[ESP_LCD_TOUCH_MAX_POINTS] = {};
+  uint16_t strength[ESP_LCD_TOUCH_MAX_POINTS] = {};
+  uint8_t count = 0;
+
+  esp_lcd_touch_read_data(s_touch);
+  const bool down = esp_lcd_touch_get_coordinates(s_touch, x, y, strength, &count,
+                                                  ESP_LCD_TOUCH_MAX_POINTS) &&
+                    count > 0;
+
+  if (down && !s_touch_was_down) {
+    s_touch_start_x = physToLogical(x[0]);
+    s_touch_start_y = physToLogical(y[0]);
+    s_touch_last_x = s_touch_start_x;
+    s_touch_last_y = s_touch_start_y;
+    s_touch_tracking = true;
+    hardware::buzzerClick();
+  } else if (down && s_touch_tracking) {
+    s_touch_last_x = physToLogical(x[0]);
+    s_touch_last_y = physToLogical(y[0]);
+  } else if (!down && s_touch_was_down && s_touch_tracking) {
+    finishTouchGesture();
+    s_touch_tracking = false;
+  }
+
+  s_touch_was_down = down;
+}
+
+}  // namespace
+
+void inputInit() {
+  DEV_I2C_Port port = DEV_I2C_Init();
+  s_touch = touch_gt911_init(port);
+  s_touch_ready = s_touch != nullptr;
+  Serial.println(s_touch_ready ? "GT911 touch ready" : "GT911 touch init failed");
+}
+
+void inputPoll() {
+  if (s_touch_ready) {
+    pollTouchGt911();
+  }
+}
+
+// --- Knob / encoder: the 3.4C has no rotary encoder or knob button. ---
+// Zoom is driven by tapping the range label (already in the UI); Wi-Fi reset
+// via the web portal. These stubs keep the shared UI code paths compiling.
+
+int8_t inputConsumeEncoderDelta() { return 0; }
+
+bool inputConsumeKnobTap() { return false; }
+
+bool inputConsumeKnobPress() { return false; }
+
+bool inputConsumeScreenTap(int16_t* x, int16_t* y) {
+  portENTER_CRITICAL(&s_input_mux);
+  const bool tap = s_tap_x >= 0 && s_tap_y >= 0;
+  if (tap) {
+    if (x != nullptr) {
+      *x = s_tap_x;
+    }
+    if (y != nullptr) {
+      *y = s_tap_y;
+    }
+    s_tap_x = -1;
+    s_tap_y = -1;
+  }
+  portEXIT_CRITICAL(&s_input_mux);
+  return tap;
+}
+
+SwipeGesture inputConsumeSwipe() {
+  portENTER_CRITICAL(&s_input_mux);
+  const SwipeGesture swipe = s_swipe_pending;
+  if (swipe != SwipeNone) {
+    s_swipe_pending = SwipeNone;
+  }
+  portEXIT_CRITICAL(&s_input_mux);
+  return swipe;
+}
+
+void inputDiscardPendingInteractions() {
+  portENTER_CRITICAL(&s_input_mux);
+  s_swipe_pending = SwipeNone;
+  s_tap_x = -1;
+  s_tap_y = -1;
+  portEXIT_CRITICAL(&s_input_mux);
+}
+
+void inputPollLongPress() {}
+
+bool inputConsumeWifiResetUiCancelled() { return false; }

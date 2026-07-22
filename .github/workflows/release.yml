@@ -1,0 +1,209 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - "*.*.*.*"
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  release:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') ||
+      github.event_name == 'push' &&
+      !contains(github.event.head_commit.message, '[skip release]')
+    runs-on: ubuntu-latest
+    outputs:
+      skipped: ${{ steps.tag.outputs.skip }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            new_tag="${GITHUB_REF#refs/tags/}"
+            echo "Using pushed tag: $new_tag"
+          else
+            RELEASE_TZ=America/Los_Angeles
+            today_prefix="$(TZ=${RELEASE_TZ} date +%Y).$(TZ=${RELEASE_TZ} date +%-m).$(TZ=${RELEASE_TZ} date +%-d)"
+            latest_count=0
+            shopt -s nullglob
+            for tag in $(git tag -l "${today_prefix}.*"); do
+              n="${tag##*.}"
+              if [[ "$n" =~ ^[0-9]+$ ]] && (( n > latest_count )); then
+                latest_count=$n
+              fi
+            done
+            new_tag="${today_prefix}.$((latest_count + 1))"
+            echo "Auto tag for ${today_prefix}: ${latest_count} -> ${new_tag}"
+          fi
+          release_name="Release ${new_tag}"
+          if git rev-parse "$new_tag" >/dev/null 2>&1; then
+            echo "Tag $new_tag already exists; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$new_tag" >> "$GITHUB_OUTPUT"
+            echo "name=$release_name" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.tag.outputs.skip != 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO
+        if: steps.tag.outputs.skip != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            tools/.cache
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini', 'lib_deps/**/*') }}
+          restore-keys: pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        if: steps.tag.outputs.skip != 'true'
+        run: pip install platformio
+
+      - name: Build firmware
+        if: steps.tag.outputs.skip != 'true'
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          export PLATFORMIO_BUILD_FLAGS="-D FLIGHTSCNR_FIRMWARE_VERSION=\\\"${RELEASE_TAG}\\\""
+          pio run -e tencoder-pro
+          pio run -t merge -e tencoder-pro
+
+      - name: Package release artifacts
+        if: steps.tag.outputs.skip != 'true'
+        run: |
+          BUILD=".pio/build/tencoder-pro"
+          OUT="release"
+          mkdir -p "$OUT"
+          cp "$BUILD/firmware-merged.bin" "$OUT/FlightScnr-tencoder-pro-merged.bin"
+          cp "$BUILD/firmware.bin" "$OUT/FlightScnr-tencoder-pro-app.bin"
+          cp "$BUILD/bootloader.bin" "$OUT/bootloader.bin"
+          cp "$BUILD/partitions.bin" "$OUT/partitions.bin"
+          (
+            cd "$OUT"
+            sha256sum *.bin > SHA256SUMS.txt
+          )
+          cat "$OUT/SHA256SUMS.txt"
+
+      - name: Create GitHub release
+        if: steps.tag.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          files: |
+            release/FlightScnr-tencoder-pro-merged.bin
+            release/FlightScnr-tencoder-pro-app.bin
+            release/bootloader.bin
+            release/partitions.bin
+            release/SHA256SUMS.txt
+          body: |
+            Firmware for **LilyGO T-Encoder Pro** (ESP32-S3, 16 MB flash).
+
+            ### Web install (recommended)
+            Open the [FlightScnr WebFlasher](https://yashmulgaonkar.github.io/FlightScnr/) in **Chrome** or **Edge**, connect USB, and click **Install**. This flashes the full factory image at **0x0** (bootloader, partitions, and app). Wi‑Fi and saved settings are cleared.
+
+            ### Manual flash
+            **Full factory image** (recommended — WebFlasher **Install**):
+            ```bash
+            esptool.py --chip esp32s3 write_flash 0x0 FlightScnr-tencoder-pro-merged.bin
+            ```
+
+            **App-only update** (keeps settings if bootloader/partitions already match):
+            ```bash
+            esptool.py --chip esp32s3 write_flash 0x10000 FlightScnr-tencoder-pro-app.bin
+            ```
+
+            | File | Use |
+            | --- | --- |
+            | `FlightScnr-tencoder-pro-merged.bin` | Full factory image — flash at **0x0** (WebFlasher **Install**) |
+            | `FlightScnr-tencoder-pro-app.bin` | App-only update — flash at **0x10000** (advanced) |
+            | `bootloader.bin` / `partitions.bin` | Individual components (advanced) |
+            | `SHA256SUMS.txt` | Checksums |
+
+            **Note:** Push the screen in (BOOT) while connecting USB if the port does not appear.
+
+      - name: Bundle WebFlasher site
+        if: steps.tag.outputs.skip != 'true'
+        env:
+          MERGED_ASSET: FlightScnr-tencoder-pro-merged.bin
+          APP_ASSET: FlightScnr-tencoder-pro-app.bin
+          RELEASE_NAME: ${{ steps.tag.outputs.name }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          RELEASE_DIR: release
+          ARCHIVE_COUNT: "12"
+        run: |
+          set -euo pipefail
+          chmod +x .github/scripts/bundle-webflasher-firmware.sh
+          .github/scripts/bundle-webflasher-firmware.sh
+
+      - name: Upload WebFlasher site artifact
+        if: steps.tag.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: webflasher-pages
+          path: docs
+          retention-days: 1
+
+  deploy-webflasher:
+    name: Deploy WebFlasher
+    needs: release
+    if: needs.release.outputs.skipped != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download WebFlasher site artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: webflasher-pages
+          path: site
+
+      - name: Verify bundled firmware
+        run: |
+          test -f site/firmware/manifest.json
+          test -f site/firmware/archive-index.json
+          test -f site/firmware/FlightScnr-tencoder-pro-merged.bin
+          test -f site/firmware/FlightScnr-tencoder-pro-app.bin
+          ls -la site/firmware/
+          ls -la site/firmware/archive || true
+          head -c 400 site/firmware/archive-index.json; echo
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
