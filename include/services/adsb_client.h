@@ -100,6 +100,12 @@ bool fetchRequest(double center_lat, double center_lon, float fetch_radius_km);
  *  TLS session's buffers are held at a time. */
 void releaseTlsSession();
 
+/** Local receiver traffic source (readsb/tar1090 aircraft.json over plain
+ *  LAN HTTP). Empty = poll adsb.fi. Persisted in NVS. */
+bool localSourceActive();
+const char* localSourceUrl();
+bool saveLocalSourceFromForm(const char* url);
+
 /** True when a queued fetch finished and data is ready to display. */
 bool fetchReady();
 

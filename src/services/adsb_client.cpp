@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
@@ -75,16 +76,20 @@ void workerYield() { vTaskDelay(1); }
 // the JsonDocument to just those keys so a large response (many aircraft at long
 // range) can't balloon internal heap and starve the SPI display driver.
 void buildAircraftFilter(JsonDocument& filter) {
-  JsonObject el = filter["ac"].add<JsonObject>();
   static const char* kKeepKeys[] = {
       "lat",          "lon",      "true_heading", "mag_heading", "track",
       "dir",          "gs",       "tas",          "ias",         "baro_rate",
       "geom_rate",    "alt_baro", "alt_geom",     "flight",      "hex",
-      "t",            "dbFlags",  "category",     "squawk",
+      "t",            "dbFlags",  "category",     "squawk",      "seen_pos",
       "orig_icao",    "origin_icao", "dep_icao",  "from",
       "dest_icao",    "destination_icao", "arr_icao", "to"};
-  for (const char* key : kKeepKeys) {
-    el[key] = true;
+  // "ac" = adsb.fi API; "aircraft" = readsb/tar1090 aircraft.json (local receiver).
+  static const char* kWrappers[] = {"ac", "aircraft"};
+  for (const char* wrapper : kWrappers) {
+    JsonObject el = filter[wrapper].add<JsonObject>();
+    for (const char* key : kKeepKeys) {
+      el[key] = true;
+    }
   }
 }
 
@@ -302,9 +307,16 @@ float s_fetch_radius_km = 0.0f;
 // that starved the ESP-Hosted SDIO RX pool and panicked the chip
 // (assert sdio_rx_get_buffer -> reboot loop). Only the fetch worker task
 // touches these objects.
-WiFiClientSecure* s_poll_client = nullptr;
+WiFiClient* s_poll_client = nullptr;  // WiFiClientSecure for adsb.fi, plain for local
 HTTPClient* s_poll_http = nullptr;
+bool s_poll_client_secure = false;
 volatile bool s_poll_session_release = false;
+
+// Local receiver source: readsb/tar1090 aircraft.json over plain LAN HTTP.
+// When set, polling bypasses adsb.fi — and TLS — entirely. The local feed
+// returns everything the antenna hears with no radius filter and keeps
+// entries after signal loss, so the parser filters by distance and seen_pos.
+char s_local_url[120] = "";
 
 void teardownPollSession() {
   if (s_poll_http != nullptr) {
@@ -714,8 +726,12 @@ void saveAltitudeFloorFromForm(const char* value) {
   }
 }
 
-bool parseAircraftDoc(JsonDocument& doc, Aircraft* out, size_t* out_count) {
+bool parseAircraftDoc(JsonDocument& doc, double center_lat, double center_lon,
+                      float radius_km, Aircraft* out, size_t* out_count) {
   JsonArray ac = doc["ac"].as<JsonArray>();
+  if (ac.isNull()) {
+    ac = doc["aircraft"].as<JsonArray>();  // readsb/tar1090 local shape
+  }
   if (ac.isNull()) {
     *out_count = 0;
     return true;
@@ -728,6 +744,21 @@ bool parseAircraftDoc(JsonDocument& doc, Aircraft* out, size_t* out_count) {
     }
     if (!plane["lat"].is<float>() || !plane["lon"].is<float>()) {
       continue;
+    }
+    // Local aircraft.json keeps entries minutes after signal loss.
+    if (plane["seen_pos"].is<float>() && plane["seen_pos"].as<float>() > 30.0f) {
+      continue;
+    }
+    if (radius_km > 0.0f) {
+      // adsb.fi filters by radius server-side; the local feed does not.
+      float dx_km = 0.0f;
+      float dy_km = 0.0f;
+      float dist_km = 0.0f;
+      geo::localOffsetKm(center_lat, center_lon, plane["lat"].as<float>(),
+                         plane["lon"].as<float>(), &dx_km, &dy_km, &dist_km);
+      if (dist_km > radius_km) {
+        continue;
+      }
     }
     if (isOnGround(plane) && !config::kTrafficIncludeGround) {
       continue;
@@ -777,7 +808,8 @@ AdsbJsonAllocator s_adsb_json_allocator;
 
 // Parse a buffered response body with a field filter, so only the ~10 keys we use
 // are materialized in the JsonDocument (keeps peak heap low on big responses).
-bool parseAircraftPayload(const char* payload, size_t payload_len, Aircraft* out,
+bool parseAircraftPayload(const char* payload, size_t payload_len, double center_lat,
+                          double center_lon, float radius_km, Aircraft* out,
                           size_t* out_count) {
   JsonDocument filter(&s_adsb_json_allocator);
   buildAircraftFilter(filter);
@@ -789,30 +821,38 @@ bool parseAircraftPayload(const char* payload, size_t payload_len, Aircraft* out
     Serial.printf("[adsb] JSON parse error: %s\n", err.c_str());
     return false;
   }
-  return parseAircraftDoc(doc, out, out_count);
+  return parseAircraftDoc(doc, center_lat, center_lon, radius_km, out, out_count);
 }
 
 bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radius_km,
                        Aircraft* out, size_t* out_count) {
   const unsigned long fetch_start_ms = millis();
+  const bool local_src = s_local_url[0] != '\0';
   if (config::kSerialTraceDebug) {
-    Serial.println("[fetch] begin HTTPS");
+    Serial.println(local_src ? "[fetch] begin local HTTP" : "[fetch] begin HTTPS");
   }
-  if (!services::https::heapReadyForAdsb()) {
+  // The TLS heap gate only matters for adsb.fi; the local plain-HTTP fetch
+  // needs almost no internal RAM and should keep polling under TLS pressure.
+  if (!local_src && !services::https::heapReadyForAdsb()) {
     if (config::kSerialTraceDebug) {
       Serial.printf("[fetch] skip heap free=%u max_blk=%u\n", ESP.getFreeHeap(),
                     ESP.getMaxAllocHeap());
     }
     return false;
   }
-  const float dist_nm = kmToNauticalMiles(fetch_radius_km);
 
-  String url = kApiBase;
-  url += String(center_lat, 6);
-  url += "/lon/";
-  url += String(center_lon, 6);
-  url += "/dist/";
-  url += String(dist_nm, 1);
+  String url;
+  if (local_src) {
+    url = s_local_url;
+  } else {
+    const float dist_nm = kmToNauticalMiles(fetch_radius_km);
+    url = kApiBase;
+    url += String(center_lat, 6);
+    url += "/lon/";
+    url += String(center_lon, 6);
+    url += "/dist/";
+    url += String(dist_nm, 1);
+  }
 
   services::https::ScopedLock tls(kFetchHttpTimeoutMs + 2000);
   if (!tls.held()) {
@@ -823,12 +863,22 @@ bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radiu
     return false;
   }
 
+  const bool want_secure = !local_src;
+  if (s_poll_client != nullptr && s_poll_client_secure != want_secure) {
+    teardownPollSession();  // source changed: rebuild the right client type
+  }
   if (s_poll_client == nullptr) {
-    s_poll_client = new WiFiClientSecure();
-    s_poll_client->setInsecure();
-    // WiFiClientSecure::setTimeout/setHandshakeTimeout take seconds, not milliseconds.
-    s_poll_client->setTimeout(kFetchHttpTimeoutSec);
-    s_poll_client->setHandshakeTimeout(kFetchHttpTimeoutSec);
+    if (want_secure) {
+      WiFiClientSecure* secure = new WiFiClientSecure();
+      secure->setInsecure();
+      // WiFiClientSecure::setTimeout/setHandshakeTimeout take seconds, not milliseconds.
+      secure->setTimeout(kFetchHttpTimeoutSec);
+      secure->setHandshakeTimeout(kFetchHttpTimeoutSec);
+      s_poll_client = secure;
+    } else {
+      s_poll_client = new WiFiClient();
+    }
+    s_poll_client_secure = want_secure;
   }
   if (s_poll_http == nullptr) {
     s_poll_http = new HTTPClient();
@@ -886,7 +936,8 @@ bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radiu
   }
 
   workerYield();
-  if (!parseAircraftPayload(payload.data, payload.len, out, out_count)) {
+  if (!parseAircraftPayload(payload.data, payload.len, center_lat, center_lon,
+                            fetch_radius_km, out, out_count)) {
     if (config::kSerialTraceDebug) {
       Serial.printf("[fetch] fail parse (%lums)\n", millis() - fetch_start_ms);
     }
@@ -949,6 +1000,16 @@ void fetchInit() {
   if (s_fetch_task != nullptr) {
     return;
   }
+  {
+    Preferences prefs;
+    if (prefs.begin("adsb", true)) {
+      prefs.getString("src_url", s_local_url, sizeof(s_local_url));
+      prefs.end();
+    }
+  }
+  if (s_local_url[0] != '\0') {
+    Serial.printf("Traffic source: local receiver %s\n", s_local_url);
+  }
   services::https::init();
   if (s_aircraft_mutex == nullptr) {
     s_aircraft_mutex = xSemaphoreCreateMutex();
@@ -982,6 +1043,40 @@ void cancelPendingFetch() {
 }
 
 void releaseTlsSession() { s_poll_session_release = true; }
+
+bool localSourceActive() { return s_local_url[0] != '\0'; }
+
+const char* localSourceUrl() { return s_local_url; }
+
+bool saveLocalSourceFromForm(const char* url) {
+  if (url == nullptr) {
+    return false;
+  }
+  while (*url == ' ') {
+    ++url;
+  }
+  char trimmed[sizeof(s_local_url)];
+  strncpy(trimmed, url, sizeof(trimmed) - 1);
+  trimmed[sizeof(trimmed) - 1] = '\0';
+  size_t len = strlen(trimmed);
+  while (len > 0 && trimmed[len - 1] == ' ') {
+    trimmed[--len] = '\0';
+  }
+  // Plain-HTTP LAN sources only; TLS stays reserved for adsb.fi.
+  if (len != 0 && strncmp(trimmed, "http://", 7) != 0) {
+    return false;
+  }
+  Preferences prefs;
+  if (!prefs.begin("adsb", false)) {
+    return false;
+  }
+  prefs.putString("src_url", trimmed);
+  prefs.end();
+  strncpy(s_local_url, trimmed, sizeof(s_local_url) - 1);
+  s_local_url[sizeof(s_local_url) - 1] = '\0';
+  s_poll_session_release = true;  // drop the old source's connection
+  return true;
+}
 
 bool fetchRequest(double center_lat, double center_lon, float fetch_radius_km) {
   if (s_fetch_task == nullptr) {

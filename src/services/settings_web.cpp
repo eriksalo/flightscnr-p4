@@ -296,6 +296,15 @@ void handleSettingsPage() {
       center_value);
   appendClamped(page, kSettingsPageCap, &used, center_n);
 
+  const int adsb_src_n = snprintf(
+      page + used, kSettingsPageCap - used,
+      "<label for=\"adsb_src\">Traffic source (optional): local receiver "
+      "aircraft.json URL, http:// only; blank = adsb.fi</label>"
+      "<input id=\"adsb_src\" name=\"adsb_src\" type=\"text\" autocomplete=\"off\" "
+      "placeholder=\"http://10.0.0.77:8080/data/aircraft.json\" value=\"%s\">",
+      services::adsb::localSourceUrl());
+  appendClamped(page, kSettingsPageCap, &used, adsb_src_n);
+
   const ui::radar::DistanceUnit unit = ui::radar::distanceUnit();
   const int range_units_n = snprintf(
       page + used, kSettingsPageCap - used,
@@ -808,6 +817,10 @@ void handleSave() {
   if (s_server->method() != HTTP_POST) {
     s_server->send(405, "text/plain", "Method Not Allowed");
     return;
+  }
+
+  if (s_server->hasArg("adsb_src")) {
+    services::adsb::saveLocalSourceFromForm(s_server->arg("adsb_src").c_str());
   }
 
   const bool loc_ok = settingsApplyFromForm(
