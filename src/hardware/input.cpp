@@ -22,12 +22,18 @@ volatile SwipeGesture s_swipe_pending = SwipeNone;
 
 esp_lcd_touch_handle_t s_touch = nullptr;
 bool s_touch_ready = false;
-bool s_touch_was_down = false;
 bool s_touch_tracking = false;
 int16_t s_touch_start_x = 0;
 int16_t s_touch_start_y = 0;
 int16_t s_touch_last_x = 0;
 int16_t s_touch_last_y = 0;
+unsigned long s_touch_last_down_ms = 0;
+
+/** The GT911 reports the finger as present only intermittently during a drag
+ *  (status flickers between polls). Treat contact as ended only after this
+ *  long with no reported point, so one continuous swipe stays one gesture
+ *  instead of fragmenting into per-sample taps. */
+constexpr unsigned long kTouchReleaseMs = 100;
 
 // Thresholds in native 720px panel space (GT911 reports panel coords).
 constexpr int kSwipeMinPx = 130;
@@ -84,22 +90,25 @@ void pollTouchGt911() {
                                                   ESP_LCD_TOUCH_MAX_POINTS) &&
                     count > 0;
 
-  if (down && !s_touch_was_down) {
-    s_touch_start_x = physToLogical(x[0]);
-    s_touch_start_y = physToLogical(y[0]);
-    s_touch_last_x = s_touch_start_x;
-    s_touch_last_y = s_touch_start_y;
-    s_touch_tracking = true;
-    hardware::buzzerClick();
-  } else if (down && s_touch_tracking) {
-    s_touch_last_x = physToLogical(x[0]);
-    s_touch_last_y = physToLogical(y[0]);
-  } else if (!down && s_touch_was_down && s_touch_tracking) {
+  const unsigned long now = millis();
+  if (down) {
+    const int16_t lx = physToLogical(x[0]);
+    const int16_t ly = physToLogical(y[0]);
+    if (!s_touch_tracking) {
+      // First contact of a new gesture: anchor the start point.
+      s_touch_start_x = lx;
+      s_touch_start_y = ly;
+      s_touch_tracking = true;
+      hardware::buzzerClick();
+    }
+    s_touch_last_x = lx;
+    s_touch_last_y = ly;
+    s_touch_last_down_ms = now;
+  } else if (s_touch_tracking && now - s_touch_last_down_ms >= kTouchReleaseMs) {
+    // Real lift-off: no point reported for kTouchReleaseMs.
     finishTouchGesture();
     s_touch_tracking = false;
   }
-
-  s_touch_was_down = down;
 }
 
 }  // namespace
