@@ -162,6 +162,15 @@ void bootScreenConnectingPulse() {
   drawSonarPing();
 }
 
+void bootScreenShowBrand() {
+  const TextLine lines[] = {
+      {"Flight Screen", displayFontTitle()},
+      {"by Erik Salo", displayFontBody()},
+  };
+  drawTextBlock(config::kColorBlack, config::kTextOnBlack, lines,
+                sizeof(lines) / sizeof(lines[0]));
+}
+
 void bootScreenShowPortalHint() {
   snprintf(s_portal_ip_alt, sizeof(s_portal_ip_alt), "or %s", config::kPortalIp);
   const TextLine lines[] = {

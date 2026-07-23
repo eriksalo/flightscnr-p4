@@ -35,6 +35,10 @@ constexpr int kTextPadPx = 6;
 constexpr int kTitleGap = 4;
 constexpr int kLogoGap = 3;
 constexpr int kLogoTopMarginPx = 2;
+/** Photo top inset from the rim. The photo is up to 220px wide; on the round
+ *  glass the top chord is too narrow near the rim, so pin it low enough that
+ *  its top corners clear the bezel curve (was implicitly ~12px → clipped). */
+constexpr int kPhotoTopMarginPx = 44;
 constexpr int kPhotoCreditGap = 2;
 constexpr int kPhotoBelowGap = 10;
 constexpr int kLineGap = 3;
@@ -1039,19 +1043,21 @@ void computeFlightDetailLayout(const FlightDetailStrings& s, int logo_h, int pho
   int y_start = 0;
 
   if (photo_h > 0) {
-    // Photo present: pin image at top, text at bottom (grows upward).
+    // Photo present: pin image near the top (below the pinched rim), text at
+    // bottom (grows upward).
     layout->photo_h = photo_h;
     layout->photo_credit_h = photo_credit_h;
+    const int photo_top = kCenterY - kCircleRadius + kPhotoTopMarginPx;
     const int art_h =
         photo_h + (photo_credit_h > 0 ? kPhotoCreditGap + photo_credit_h : 0);
-    layout->y_photo = top;
+    layout->y_photo = photo_top;
     layout->y_photo_credit = layout->y_photo + photo_h + kPhotoCreditGap;
 
     y_start = layoutBottomY(callsign_h + kLineGap + body_h + kSectionGap + body_h +
                             kLineGap + detail_h + kLineGap + metrics_h + footer_h);
     refineTextMetrics(y_start, &pre_type_h, &type_block_h, &text_h);
     const int y_bottom = layoutBottomY(text_h);
-    const int min_text_y = top + art_h + kPhotoBelowGap;
+    const int min_text_y = photo_top + art_h + kPhotoBelowGap;
     y_start = y_bottom < min_text_y ? min_text_y : y_bottom;
     refineTextMetrics(y_start, &pre_type_h, &type_block_h, &text_h);
   } else {

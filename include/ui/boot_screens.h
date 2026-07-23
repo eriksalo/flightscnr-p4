@@ -1,5 +1,8 @@
 #pragma once
 
+/** Branded startup splash ("Flight Screen / by Erik Salo"). */
+void bootScreenShowBrand();
+
 /** Full-screen messages during WiFi setup and reconnect. */
 void bootScreenShowPortalHint();
 void bootScreenShowConnectFailed();

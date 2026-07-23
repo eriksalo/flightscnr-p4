@@ -446,11 +446,9 @@ void formatAltitudeDisplay(const char* alt_ft_tag, char* out, size_t out_len) {
     return;
   }
 
-  if (s_distance_unit == DistanceUnit::Km) {
-    snprintf(out, out_len, "%d m", static_cast<int>(lroundf(ft * kFeetToMeters)));
-  } else {
-    snprintf(out, out_len, "%d ft", ft);
-  }
+  // Altitude is always shown in feet, number only (no unit suffix), regardless
+  // of the distance unit that governs range rings and speed.
+  snprintf(out, out_len, "%d", ft);
 }
 
 void formatSpeedLabel(char* out, size_t out_len, float gs_knots) {

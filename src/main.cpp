@@ -1828,6 +1828,8 @@ void setup() {
 
   hardware::panelBootResolve();
   displayInit();
+  bootScreenShowBrand();
+  delay(2000);  // Brief branded splash before Wi-Fi setup takes over the screen.
   inputInit();
   hardware::buzzerInit();
   hardware::buzzerBootLoad();
