@@ -80,13 +80,42 @@ struct CachedAircraftMarker {
   int x = 0;
   int y = 0;
   bool beyond_dot = false;
+  /** Screen extent (symbol + tag), filled on first use by markerBoundsOf().
+   *  Measuring a tag block costs three textWidth() passes, and the sweep asks
+   *  for these every frame, so they are computed once per marker snapshot. */
+  mutable bool bounds_valid = false;
+  mutable IntRect bounds{};
 };
 
-CachedAircraftMarker s_prev_aircraft_markers[services::adsb::kMaxAircraft];
-size_t s_prev_aircraft_marker_count = 0;
+/** Aircraft state currently painted into the content sprite / panel. Live ADS-B
+ *  data is copied into this snapshot one target at a time, as the sweep spoke
+ *  crosses that target's bearing (see revealAircraftUnderBeam) — so a blip only
+ *  appears, moves, or vanishes when the beam paints it, like a real PPI scope. */
+CachedAircraftMarker s_shown_markers[services::adsb::kMaxAircraft];
+size_t s_shown_marker_count = 0;
 /** Scratch for ADS-B refresh — must not live on loopTask stack (~8 KB). */
 CachedAircraftMarker s_current_aircraft_markers[services::adsb::kMaxAircraft];
 bool s_marker_prev_used[services::adsb::kMaxAircraft] = {};
+
+/** Live ADS-B data may differ from s_shown_markers; beam reveal still has work. */
+bool s_reveal_pending = false;
+/** Adopt live aircraft state on the next content rebuild (no-reveal fallbacks). */
+bool s_aircraft_sync_pending = false;
+
+bool rectEmpty(const IntRect& r);
+bool rectsOverlap(const IntRect& a, const IntRect& b);
+IntRect clampRectToScreen(IntRect r);
+IntRect unionRect(const IntRect& a, const IntRect& b);
+IntRect markerBounds(const CachedAircraftMarker& marker);
+
+/** markerBounds() with the result memoized on the marker. */
+const IntRect& markerBoundsOf(const CachedAircraftMarker& marker) {
+  if (!marker.bounds_valid) {
+    marker.bounds = markerBounds(marker);
+    marker.bounds_valid = true;
+  }
+  return marker.bounds;
+}
 
 class DrawScope {
  public:
@@ -397,11 +426,13 @@ size_t visibleAircraftCount() {
   return visible;
 }
 
-void drawAircraft() {
+/** Paint the shown-marker snapshot. With clip != nullptr only markers touching
+ *  that rect are drawn (region repaint); a marker's own extent may exceed the
+ *  rect, which is harmless because unchanged markers redraw identically.
+ *  Every marker is collected before clipping so far-first z-order (and tag
+ *  declutter) come out the same as in a full-screen redraw. */
+void drawShownMarkers(const IntRect* clip) {
   initLabelMetrics();
-
-  const size_t n = services::adsb::aircraftCount();
-  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
 
   AircraftDrawItem items[services::adsb::kMaxAircraft];
   BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
@@ -409,72 +440,75 @@ void drawAircraft() {
   size_t dot_count = 0;
 
   const bool hide_others = services::alert::hideNonAlertedEnabled();
-  for (size_t i = 0; i < n; ++i) {
-    if (hide_others && !services::alert::isHighlighted(planes[i])) {
-      continue;
-    }
-    float dx_km = 0.0f;
-    float dy_km = 0.0f;
-    float dist_km = 0.0f;
-    localOffsetFromCenter(planes[i].lat, planes[i].lon, &dx_km, &dy_km, &dist_km);
-
-    if (isInsideOuterRingKm(dist_km)) {
-      int x = 0;
-      int y = 0;
-      latLonToScreen(planes[i].lat, planes[i].lon, &x, &y);
-      items[draw_count].index = i;
-      items[draw_count].x = x;
-      items[draw_count].y = y;
-      items[draw_count].dist_sq = distSqFromCenter(x, y);
-      ++draw_count;
+  for (size_t i = 0; i < s_shown_marker_count; ++i) {
+    const CachedAircraftMarker& marker = s_shown_markers[i];
+    if (hide_others && !services::alert::isHighlighted(marker.plane)) {
       continue;
     }
 
-    int dot_x = 0;
-    int dot_y = 0;
-    if (!beyondRingEdgeDotFromLatLon(planes[i].lat, planes[i].lon, &dot_x, &dot_y)) {
+    if (marker.beyond_dot) {
+      dots[dot_count].index = i;
+      dots[dot_count].x = marker.x;
+      dots[dot_count].y = marker.y;
+      dots[dot_count].dist_sq = distSqFromCenter(marker.x, marker.y);
+      ++dot_count;
       continue;
     }
-    dots[dot_count].index = i;
-    dots[dot_count].x = dot_x;
-    dots[dot_count].y = dot_y;
-    dots[dot_count].dist_sq = distSqFromCenter(dot_x, dot_y);
-    ++dot_count;
+
+    items[draw_count].index = i;
+    items[draw_count].x = marker.x;
+    items[draw_count].y = marker.y;
+    items[draw_count].dist_sq = distSqFromCenter(marker.x, marker.y);
+    ++draw_count;
   }
+
+  const auto clipped_out = [clip](size_t marker_index) {
+    return clip != nullptr &&
+           !rectsOverlap(*clip, markerBoundsOf(s_shown_markers[marker_index]));
+  };
 
   sortBeyondDotsFarFirst(dots, dot_count);
   for (size_t d = 0; d < dot_count; ++d) {
-    const size_t i = dots[d].index;
-    drawBeyondRingMarker(dots[d].x, dots[d].y, displayTrackDeg(planes[i].track_deg),
-                         &planes[i]);
+    if (clipped_out(dots[d].index)) {
+      continue;
+    }
+    const services::adsb::Aircraft& plane = s_shown_markers[dots[d].index].plane;
+    drawBeyondRingMarker(dots[d].x, dots[d].y, displayTrackDeg(plane.track_deg), &plane);
   }
 
   const bool pulse_on = services::alert::pulsePhase();
   sortDrawItemsFarFirst(items, draw_count);
   for (size_t d = 0; d < draw_count; ++d) {
-    const size_t i = items[d].index;
+    if (clipped_out(items[d].index)) {
+      continue;
+    }
+    const services::adsb::Aircraft& plane = s_shown_markers[items[d].index].plane;
     uint16_t color = radar::kColorAircraft;
-    if (services::alert::isHighlighted(planes[i])) {
+    if (services::alert::isHighlighted(plane)) {
       if (pulse_on) {
-        color = planes[i].isEmergencySquawk() ? radar::kColorAlertEmergency
-                                              : radar::kColorAlertMilitary;
+        color = plane.isEmergencySquawk() ? radar::kColorAlertEmergency
+                                          : radar::kColorAlertMilitary;
       } else {
         color = radar::kColorGrid;
       }
     }
-    aircraft_symbol::draw(*s_draw, items[d].x, items[d].y, displayTrackDeg(planes[i].track_deg),
-                          color, &planes[i]);
+    aircraft_symbol::draw(*s_draw, items[d].x, items[d].y, displayTrackDeg(plane.track_deg),
+                          color, &plane);
   }
   for (size_t d = 0; d < draw_count; ++d) {
-    const size_t i = items[d].index;
+    const services::adsb::Aircraft& plane = s_shown_markers[items[d].index].plane;
     // Far-first order: the nearest kMaxTaggedAircraft are at the tail.
-    if (draw_count - d > radar::kMaxTaggedAircraft &&
-        !services::alert::isHighlighted(planes[i])) {
+    if (draw_count - d > radar::kMaxTaggedAircraft && !services::alert::isHighlighted(plane)) {
       continue;
     }
-    drawAircraftTag(items[d].x, items[d].y, planes[i]);
+    if (clipped_out(items[d].index)) {
+      continue;
+    }
+    drawAircraftTag(items[d].x, items[d].y, plane);
   }
 }
+
+void drawAircraft() { drawShownMarkers(nullptr); }
 
 void drawCardinalLabel(const char* text, int x, int y, TextDatum datum) {
   displayFontApply(*s_draw, s_cardinal_style);
@@ -732,7 +766,7 @@ void sweepSpokeEndpoint(float angle_deg, int* ex, int* ey) {
   *ey = cy - static_cast<int>(lroundf(cosf(rad) * static_cast<float>(r)));
 }
 
-void savePrevAircraftMarkers();
+void syncShownMarkersToLive();
 
 bool rectEmpty(const IntRect& r);
 IntRect markerBounds(const CachedAircraftMarker& marker);
@@ -853,94 +887,7 @@ void drawAircraftInRect(const IntRect& dirty) {
     return;
   }
   const IntRect clip = clampRectToScreen(dirty);
-  initLabelMetrics();
-
-  const size_t n = services::adsb::aircraftCount();
-  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
-
-  AircraftDrawItem items[services::adsb::kMaxAircraft];
-  BeyondDotDrawItem dots[services::adsb::kMaxAircraft];
-  size_t draw_count = 0;
-  size_t dot_count = 0;
-
-  for (size_t i = 0; i < n; ++i) {
-    float dx_km = 0.0f;
-    float dy_km = 0.0f;
-    float dist_km = 0.0f;
-    localOffsetFromCenter(planes[i].lat, planes[i].lon, &dx_km, &dy_km, &dist_km);
-
-    if (isInsideOuterRingKm(dist_km)) {
-      int x = 0;
-      int y = 0;
-      latLonToScreen(planes[i].lat, planes[i].lon, &x, &y);
-      CachedAircraftMarker marker;
-      marker.plane = planes[i];
-      marker.x = x;
-      marker.y = y;
-      marker.beyond_dot = false;
-      if (!rectsOverlap(clip, markerBounds(marker))) {
-        continue;
-      }
-      items[draw_count].index = i;
-      items[draw_count].x = x;
-      items[draw_count].y = y;
-      items[draw_count].dist_sq = distSqFromCenter(x, y);
-      ++draw_count;
-      continue;
-    }
-
-    int dot_x = 0;
-    int dot_y = 0;
-    if (!beyondRingEdgeDotFromLatLon(planes[i].lat, planes[i].lon, &dot_x, &dot_y)) {
-      continue;
-    }
-    CachedAircraftMarker marker;
-    marker.plane = planes[i];
-    marker.x = dot_x;
-    marker.y = dot_y;
-    marker.beyond_dot = true;
-    if (!rectsOverlap(clip, markerBounds(marker))) {
-      continue;
-    }
-    dots[dot_count].index = i;
-    dots[dot_count].x = dot_x;
-    dots[dot_count].y = dot_y;
-    dots[dot_count].dist_sq = distSqFromCenter(dot_x, dot_y);
-    ++dot_count;
-  }
-
-  sortBeyondDotsFarFirst(dots, dot_count);
-  for (size_t d = 0; d < dot_count; ++d) {
-    const size_t i = dots[d].index;
-    drawBeyondRingMarker(dots[d].x, dots[d].y, displayTrackDeg(planes[i].track_deg),
-                         &planes[i]);
-  }
-
-  const bool pulse_on2 = services::alert::pulsePhase();
-  sortDrawItemsFarFirst(items, draw_count);
-  for (size_t d = 0; d < draw_count; ++d) {
-    const size_t i = items[d].index;
-    uint16_t color = radar::kColorAircraft;
-    if (services::alert::isHighlighted(planes[i])) {
-      if (pulse_on2) {
-        color = planes[i].isEmergencySquawk() ? radar::kColorAlertEmergency
-                                              : radar::kColorAlertMilitary;
-      } else {
-        color = radar::kColorGrid;
-      }
-    }
-    aircraft_symbol::draw(*s_draw, items[d].x, items[d].y, displayTrackDeg(planes[i].track_deg),
-                          color, &planes[i]);
-  }
-  for (size_t d = 0; d < draw_count; ++d) {
-    const size_t i = items[d].index;
-    // Far-first order: the nearest kMaxTaggedAircraft are at the tail.
-    if (draw_count - d > radar::kMaxTaggedAircraft &&
-        !services::alert::isHighlighted(planes[i])) {
-      continue;
-    }
-    drawAircraftTag(items[d].x, items[d].y, planes[i]);
-  }
+  drawShownMarkers(&clip);
 }
 
 bool rebuildContentBase() {
@@ -1211,11 +1158,11 @@ IntRect unionChangedMarkerBounds(const CachedAircraftMarker* current, size_t cur
 
   for (size_t c = 0; c < curr_count; ++c) {
     int prev_i = -1;
-    for (size_t p = 0; p < s_prev_aircraft_marker_count; ++p) {
+    for (size_t p = 0; p < s_shown_marker_count; ++p) {
       if (s_marker_prev_used[p]) {
         continue;
       }
-      if (aircraftIdentityMatch(s_prev_aircraft_markers[p].plane, current[c].plane)) {
+      if (aircraftIdentityMatch(s_shown_markers[p].plane, current[c].plane)) {
         prev_i = static_cast<int>(p);
         break;
       }
@@ -1223,35 +1170,199 @@ IntRect unionChangedMarkerBounds(const CachedAircraftMarker* current, size_t cur
 
     if (prev_i >= 0) {
       s_marker_prev_used[static_cast<size_t>(prev_i)] = true;
-      if (markerVisualChanged(s_prev_aircraft_markers[static_cast<size_t>(prev_i)],
+      if (markerVisualChanged(s_shown_markers[static_cast<size_t>(prev_i)],
                               current[c])) {
         dirty = unionRect(dirty,
-                          markerBounds(s_prev_aircraft_markers[static_cast<size_t>(prev_i)]));
-        dirty = unionRect(dirty, markerBounds(current[c]));
+                          markerBoundsOf(s_shown_markers[static_cast<size_t>(prev_i)]));
+        dirty = unionRect(dirty, markerBoundsOf(current[c]));
       }
     } else {
-      dirty = unionRect(dirty, markerBounds(current[c]));
+      dirty = unionRect(dirty, markerBoundsOf(current[c]));
     }
   }
 
-  for (size_t p = 0; p < s_prev_aircraft_marker_count; ++p) {
+  for (size_t p = 0; p < s_shown_marker_count; ++p) {
     if (!s_marker_prev_used[p]) {
-      dirty = unionRect(dirty, markerBounds(s_prev_aircraft_markers[p]));
+      dirty = unionRect(dirty, markerBoundsOf(s_shown_markers[p]));
     }
   }
 
   return dirty;
 }
 
-void savePrevAircraftMarkers() {
-  s_prev_aircraft_marker_count =
-      collectAircraftMarkers(s_prev_aircraft_markers, services::adsb::kMaxAircraft);
+/** Adopt the whole live picture as shown (screen-wide update, no beam reveal). */
+void syncShownMarkersToLive() {
+  s_shown_marker_count =
+      collectAircraftMarkers(s_shown_markers, services::adsb::kMaxAircraft);
+  s_reveal_pending = false;
+  s_aircraft_sync_pending = false;
+}
+
+/** Screen bearing of a marker in sweep coordinates: 0 = up, clockwise. */
+float markerBearingDeg(const CachedAircraftMarker& marker) {
+  const float dx = static_cast<float>(marker.x - radar::kCenterX);
+  const float dy = static_cast<float>(radar::kCenterY - marker.y);
+  if (fabsf(dx) < 0.01f && fabsf(dy) < 0.01f) {
+    return 0.0f;
+  }
+  float deg = atan2f(dx, dy) * 180.0f / 3.14159265f;
+  if (deg < 0.0f) {
+    deg += 360.0f;
+  }
+  return deg;
+}
+
+float normalizeSweepDeg(float deg) {
+  deg = std::fmod(deg, 360.0f);
+  if (deg < 0.0f) {
+    deg += 360.0f;
+  }
+  return deg;
+}
+
+/** True when the spoke moved past target_deg going from from_deg to to_deg. */
+bool beamCrossed(float from_deg, float to_deg, float target_deg) {
+  const float span = normalizeSweepDeg(to_deg - from_deg);
+  if (span <= 0.0f) {
+    return false;
+  }
+  const float rel = normalizeSweepDeg(target_deg - from_deg);
+  return rel > 0.0f && rel <= span;
+}
+
+/** Repaint one region of the content sprite from the shown snapshot and push it. */
+void repaintRegion(const IntRect& rect) {
+  const IntRect clipped = clampRectToScreen(rect);
+  if (rectEmpty(clipped) || !s_bg_ready || !s_content_ready) {
+    return;
+  }
+  copyBgRegionToContent(clipped);
+  {
+    const DrawScope scope(s_content.gfx());
+    drawAircraftInRect(clipped);
+  }
+  blitRegionToPanel(clipped);
+  tft.setTextDatum(TextDatum::TopLeft);
+}
+
+/** Copy live ADS-B state into the shown snapshot for every target the spoke just
+ *  crossed, repainting only those targets' regions. Blips therefore appear, step,
+ *  and fade out under the beam instead of the whole scope updating at once. */
+void revealAircraftUnderBeam(float from_deg, float to_deg) {
+  initLabelMetrics();
+  if (!s_reveal_pending || !s_bg_ready || !s_content_ready || !s_content_base_valid) {
+    return;
+  }
+  if (normalizeSweepDeg(to_deg - from_deg) <= 0.0f) {
+    return;
+  }
+
+  const size_t live_count =
+      collectAircraftMarkers(s_current_aircraft_markers, services::adsb::kMaxAircraft);
+
+  // Regions to repaint this frame; kept separate (not unioned) so a wide-apart
+  // pair does not turn into a quadrant-sized blit.
+  constexpr int kMaxRevealRects = 8;
+  IntRect rects[kMaxRevealRects];
+  int rect_count = 0;
+  auto add_rect = [&](const IntRect& r) {
+    if (rectEmpty(r)) {
+      return;
+    }
+    if (rect_count < kMaxRevealRects) {
+      rects[rect_count++] = r;
+    } else {
+      rects[kMaxRevealRects - 1] = unionRect(rects[kMaxRevealRects - 1], r);
+    }
+  };
+
+  memset(s_marker_prev_used, 0, sizeof(s_marker_prev_used));
+  bool still_pending = false;
+  size_t write_i = 0;
+
+  // Pass 1: moved/changed targets update in place; stale ones drop out.
+  for (size_t p = 0; p < s_shown_marker_count; ++p) {
+    const CachedAircraftMarker shown = s_shown_markers[p];
+    int live_i = -1;
+    for (size_t c = 0; c < live_count; ++c) {
+      if (s_marker_prev_used[c]) {
+        continue;
+      }
+      if (aircraftIdentityMatch(s_current_aircraft_markers[c].plane, shown.plane)) {
+        live_i = static_cast<int>(c);
+        break;
+      }
+    }
+
+    if (live_i < 0) {
+      // Dropped from the feed: the blip fades when the beam next sweeps it.
+      if (beamCrossed(from_deg, to_deg, markerBearingDeg(shown))) {
+        add_rect(markerBoundsOf(shown));
+        continue;  // do not carry into the compacted snapshot
+      }
+      still_pending = true;
+      s_shown_markers[write_i++] = shown;
+      continue;
+    }
+
+    s_marker_prev_used[static_cast<size_t>(live_i)] = true;
+    const CachedAircraftMarker& live = s_current_aircraft_markers[static_cast<size_t>(live_i)];
+    if (!markerVisualChanged(shown, live)) {
+      s_shown_markers[write_i++] = shown;
+      continue;
+    }
+
+    // Either bearing counts: a target that moved counter-sweep is still painted
+    // (and its old blip erased) on the pass that reaches it first.
+    if (beamCrossed(from_deg, to_deg, markerBearingDeg(live)) ||
+        beamCrossed(from_deg, to_deg, markerBearingDeg(shown))) {
+      add_rect(unionRect(markerBoundsOf(shown), markerBoundsOf(live)));
+      s_shown_markers[write_i++] = live;
+    } else {
+      still_pending = true;
+      s_shown_markers[write_i++] = shown;
+    }
+  }
+  s_shown_marker_count = write_i;
+
+  // Pass 2: targets new to the feed paint in as the beam reaches them.
+  for (size_t c = 0; c < live_count; ++c) {
+    if (s_marker_prev_used[c]) {
+      continue;
+    }
+    const CachedAircraftMarker& live = s_current_aircraft_markers[c];
+    if (!beamCrossed(from_deg, to_deg, markerBearingDeg(live))) {
+      still_pending = true;
+      continue;
+    }
+    if (s_shown_marker_count >= services::adsb::kMaxAircraft) {
+      still_pending = true;
+      continue;
+    }
+    s_shown_markers[s_shown_marker_count++] = live;
+    add_rect(markerBoundsOf(live));
+  }
+
+  s_reveal_pending = still_pending;
+
+  for (int i = 0; i < rect_count; ++i) {
+    repaintRegion(rects[i]);
+  }
+
+  if (config::kRadarSweepTraceDebug && rect_count > 0) {
+    Serial.printf("[sweep] reveal ang=%.1f->%.1f rects=%d shown=%u pending=%d\n", from_deg,
+                  to_deg, rect_count, static_cast<unsigned>(s_shown_marker_count),
+                  s_reveal_pending ? 1 : 0);
+  }
 }
 
 }  // namespace
 
 static void blitStatic() {
   initPalette();
+  // Entering the radar shows the current picture at once; per-target beam reveal
+  // only governs updates from here on.
+  syncShownMarkersToLive();
 
   if (!s_bg_ready) {
     const DrawScope scope(tft);
@@ -1274,7 +1385,6 @@ static void blitStatic() {
     resetDisplaySweepAngle(millis());
     updateSweepOnPanel(s_display_sweep_deg);
   }
-  savePrevAircraftMarkers();
 }
 
 void radarDisplayRefreshSweep() {
@@ -1309,12 +1419,14 @@ void radarDisplayRefreshSweep() {
         const float angle = advanceDisplaySweepAngle(now);
         drawSweepAtOn(tft, angle);
       }
-      drawAircraft();
-      tft.setTextDatum(TextDatum::TopLeft);
-      if (s_aircraft_dirty) {
-        savePrevAircraftMarkers();
+      // No offscreen buffer: nothing to reveal region-by-region, so fall back to
+      // screen-wide updates of the whole aircraft layer.
+      if (s_aircraft_dirty || s_aircraft_sync_pending || s_reveal_pending) {
+        syncShownMarkersToLive();
         s_aircraft_dirty = false;
       }
+      drawAircraft();
+      tft.setTextDatum(TextDatum::TopLeft);
       return;
     }
   }
@@ -1337,6 +1449,11 @@ void radarDisplayRefreshSweep() {
   }
 
   if (s_aircraft_dirty || !s_content_base_valid) {
+    // A screen-wide rebuild draws the shown snapshot; only the fallback paths
+    // (sweep line off, or reveal unavailable) adopt live state here.
+    if (s_aircraft_sync_pending) {
+      syncShownMarkersToLive();
+    }
     if (!rebuildContentBase()) {
       if (config::kRadarResumeDebug) {
         static unsigned long s_last_rebuild_fail_ms = 0;
@@ -1381,7 +1498,6 @@ void radarDisplayRefreshSweep() {
       }
     }
     s_sweep_track_valid = false;
-    savePrevAircraftMarkers();
     s_aircraft_dirty = false;
     s_aircraft_dirty_rect = {};
   }
@@ -1392,7 +1508,14 @@ void radarDisplayRefreshSweep() {
       paint_gap = now - s_last_sweep_paint_ms;
     }
     recoverSweepAfterGap(paint_gap);
+    const bool had_angle = s_display_sweep_init;
+    const float prev_angle = s_display_sweep_deg;
     const float angle = advanceDisplaySweepAngle(now);
+    if (had_angle) {
+      // Paint targets the spoke just passed before the spoke itself, so the line
+      // stays on top of anything it reveals this frame.
+      revealAircraftUnderBeam(prev_angle, angle);
+    }
     updateSweepOnPanel(angle);
   } else if (s_sweep_track_valid) {
     blitRegionToPanel(s_prev_sweep_dirty);
@@ -1409,13 +1532,14 @@ void radarDisplayDraw() {
   s_content_base_valid = false;
   s_sweep_track_valid = false;
   s_display_sweep_init = false;
-  s_prev_aircraft_marker_count = 0;
+  s_shown_marker_count = 0;
 
   if (rebuildBackgroundSprite() && ensureContentSprite()) {
     blitStatic();
     return;
   }
 
+  syncShownMarkersToLive();
   const DrawScope scope(tft);
   drawStaticGrid(tft);
   if (displayPrefsSweepLineEnabled()) {
@@ -1424,11 +1548,26 @@ void radarDisplayDraw() {
   }
   drawAircraft();
   tft.setTextDatum(TextDatum::TopLeft);
-  savePrevAircraftMarkers();
 }
 
 void radarDisplayRefreshAircraft() {
   initPalette();
+
+  if (!s_bg_ready) {
+    rebuildBackgroundSprite();
+  }
+
+  // PPI behaviour: hand the new ADS-B picture to the sweep instead of pushing it
+  // now. radarDisplayRefreshSweep() copies each target into the shown snapshot as
+  // the spoke crosses its bearing, so blips update under the beam.
+  if (radar::kSweepPaintsAircraft && displayPrefsSweepLineEnabled() && s_bg_ready &&
+      ensureContentSprite()) {
+    s_reveal_pending = true;
+    if (config::kRadarSweepTraceDebug) {
+      Serial.println("[sweep] aircraft_refresh queued for beam reveal");
+    }
+    return;
+  }
 
   const size_t curr_count = collectAircraftMarkers(s_current_aircraft_markers,
                                                     services::adsb::kMaxAircraft);
@@ -1443,17 +1582,12 @@ void radarDisplayRefreshAircraft() {
     Serial.printf("[radar] adsb dirty %dx%d @ (%d,%d)\n", dirty.w, dirty.h, dirty.x, dirty.y);
   }
 
-  if (!s_bg_ready) {
-    rebuildBackgroundSprite();
-  }
-
-  // Apply the aircraft change to the panel immediately so blips track the ADS-B
-  // poll (~2s) instead of only refreshing where the rotating sweep line happens
-  // to cross them. If the offscreen content sprite is unavailable (low heap),
-  // fall back to the deferred flag consumed by radarDisplayRefreshSweep().
-  if (!ensureContentSprite() || !rebuildContentBase()) {
+  // Sweep line off (or no offscreen buffer): there is no beam to paint the change
+  // in, so apply it screen-wide right away and keep blips on the ADS-B poll (~2s).
+  if (!ensureContentSprite()) {
     s_aircraft_dirty = true;
     s_aircraft_dirty_rect = dirty;
+    s_aircraft_sync_pending = true;
     if (config::kRadarResumeDebug) {
       static unsigned long s_last_defer_ms = 0;
       const unsigned long now_ms = millis();
@@ -1466,6 +1600,16 @@ void radarDisplayRefreshAircraft() {
     }
     if (config::kRadarSweepTraceDebug) {
       Serial.println("[sweep] aircraft_refresh deferred (no content sprite)");
+    }
+    return;
+  }
+
+  syncShownMarkersToLive();
+  if (!rebuildContentBase()) {
+    s_aircraft_dirty = true;
+    s_aircraft_dirty_rect = dirty;
+    if (config::kRadarSweepTraceDebug) {
+      Serial.println("[sweep] aircraft_refresh deferred (content rebuild failed)");
     }
     return;
   }
@@ -1487,7 +1631,6 @@ void radarDisplayRefreshAircraft() {
   tft.setTextDatum(TextDatum::TopLeft);
 
   s_sweep_track_valid = false;
-  savePrevAircraftMarkers();
   s_aircraft_dirty = false;
   s_aircraft_dirty_rect = {};
 }

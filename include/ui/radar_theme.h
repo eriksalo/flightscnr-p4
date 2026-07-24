@@ -73,6 +73,12 @@ constexpr float kSweepLineHalfWidth = 0.9f;
 /** Trailing sweep lines (1 = leading spoke only, no trail). */
 constexpr int kSweepTrailLines = 1;
 constexpr float kSweepTrailSpanDeg = 12.0f;
+/** PPI behaviour: aircraft blips update only as the sweep spoke crosses their
+ *  bearing, instead of the whole screen jumping on each ADS-B poll. Set false to
+ *  go back to screen-wide updates (also the fallback when the sweep line is off
+ *  or the offscreen content sprite could not be allocated). */
+constexpr bool kSweepPaintsAircraft = true;
+
 /** Chroma key for sweep sprite (must not appear in grid or sweep colors). */
 constexpr uint16_t kSweepTransparentColor = 0x0001;
 
