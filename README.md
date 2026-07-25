@@ -1,172 +1,225 @@
-# FlightScnr: Mini ADS-B Radar Style Flight Scanner
+# FlightScnr P4 — live ADS-B radar on a 3.4″ round display
 
-The best part? There is absolutely no coding or soldering required!
+Firmware for a desk radar scope: live ADS-B traffic sweeping around your position, drawn like a real
+PPI radar — blips paint in as the sweep arm passes them, and hold their position until it comes round
+again.
+
+This is a **port of [FlightScnr](https://github.com/yashmulgaonkar/FlightScnr) by
+[yashmulgaonkar](https://github.com/yashmulgaonkar)** to the **Waveshare ESP32-P4 3.4C** round touch
+display, rebuilt for its native 720×720 panel rather than the original 390×390 AMOLED. See
+[Credits](#credits) for the full lineage and [License](#license) for the terms it inherits.
+
 <p align="center">
-<img width="1353" height="863" alt="image" src="https://github.com/user-attachments/assets/5275eb54-d5cf-4815-b19a-85e70ee04339" />
+  <img src="docs/images/radar-720.png" width="480" alt="Radar screen: range rings in miles, aircraft icons with callsign / type / altitude tags, sweep arm">
 </p>
 
-[![Youtube Video](https://github.com/user-attachments/assets/0ef2ec23-e1fe-4496-82ae-cd5a6211d24c)](https://youtube.com/shorts/vinE6DK6SSY?si=bhuOrcAyPHRql8ar)
-<p align="center">
-  <a href="https://buymeacoffee.com/yashmulgaonkar" target="_blank">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 35px;">
-  </a>
-</p>
-
-
-Open-source firmware that shows **live ADS-B traffic** on a sweeping radar around your preset position. Built for the **[LilyGO T-Encoder Pro](https://www.lilygo.cc/zo4apl)**, inspired by **[ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar)** and **[deskradar](https://github.com/arvis91/deskradar)**.
-
-Firmware is **[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)** ([LICENSE](LICENSE)) - shareable for hobbyists, not for closed commercial forks.
-
-**Enclosure:** [MakerWorld](https://makerworld.com/en/models/2902669-flightscnr-live-ads-b-traffic-sweeping-radar#profileId-3245055) (separate license - see [below](#enclosure-license)).
+*(Captured from a running board with `tools/device_screenshot.py` — this is the actual 720×720
+framebuffer, not a mock-up.)*
 
 ## Features
 
-- **Radar** - sweeping display with range rings (2–30 mi presets: 2, 3, 6, 8, 10, 20, 30; default 8), compass rose, optional sweep line, themed colors (Green default), km/mi/nm units, rim dots for out-of-range traffic. Live ADS-B via [adsb.fi](https://adsb.fi), ~2s refresh, up to 64 aircraft.
-- **Flight detail** - tap a blip or short-press the knob: callsign, airline logo/name, route, ICAO type, altitude, speed. Knob cycles visible aircraft. Optional route lookup (see [APIs](#optional-apis)).
-- **Clock & forecast** - swipe down from radar: NTP time, date, current weather, sunrise/sunset. Swipe right for a 3-day forecast (hi/lo, icons, rain %).
-- **Auto timezone** - Fetch Timezone + DST from your radar center ([timeapi.io](https://timeapi.io), no API key needed). Manual UTC offset on-device disables auto until re-enabled on the web portal.
-- **Tomorrow.io weather** - optional key + enable checkbox on the web portal; metric or imperial.
-- **Auto-idle clock** (default on) - empty radar (no in-range aircraft) switches to the clock; returns when traffic appears.
-- **Settings** - three on-device pages (network/API status, display/timeouts, color/beep) plus full config at [http://flightscnr.local/](http://flightscnr.local/). Web **Save** applies live - no reboot.
-
-Screen timeouts (configurable on web or device page 2): flight detail 10/20/30s or manual; clock/forecast 5/10/15s or manual. Settings and about auto-return to radar after 10s 
-
-## Navigation
-
-**From radar:** knob = range preset · tap / short press = flight detail · swipe ↓ clock · ↑ about · ← settings
-
-**From clock:** ← clock settings · → forecast · ↑ radar
-
-**From forecast:** ← clock · ↑ radar
-
-**From flight detail / settings / about:** swipe right (or timeout) → back
-
-**Everywhere:** hold knob **5 s** = clear all Wi‑Fi networks and open the setup portal. Do **not** hold the screen at power-on - that is BOOT/download mode.
-
-On-device settings: page 2 = brightness, units, compass, sweep, timeouts, idle clock. Page 3 = radar color, beep on/off, tone A–E.
-
-## Setup
-
-1. Power on → join **FlightScnr-AP** if prompted.
-2. Open [http://4.3.2.1](http://4.3.2.1) or [http://flightscnr.local](http://flightscnr.local) → enter Wi‑Fi credentials (or manage **Saved networks**). Reboot the unit.
-3. After connect: boot splash (~5 s) → radar.
-4. Set radar center, weather key, and optional route APIs at [http://flightscnr.local/](http://flightscnr.local/) (or device IP shown on settings page 1).
-
-You can save up to **3** Wi‑Fi networks. Preference order is slot order (#1 tried first). Manage them from the setup portal (**Saved networks**) or the online settings page (**Wi‑Fi networks** card: add, remove, reorder, update password).
-
-If a network fails repeatedly, it is **temporarily skipped** for the rest of that boot/session — credentials stay until you delete or edit them. The connecting screen shows whichever SSID is being tried.
-
-If Wi‑Fi stays down through several reconnect attempts, the setup portal opens again (networks are **not** wiped) so you can add or fix a network.
-
-To change other settings later: same URL, **Save**. To wipe all Wi‑Fi networks and reopen the portal: hold knob 5s. 
-
-## Screenshots
-
-**Flight detail** - route, airline logo, altitude, speed
-<img width="1283" height="582" alt="Flight detail" src="https://github.com/user-attachments/assets/73eca09d-6f75-4bc9-83c2-7e8bcf1104f3" />
-
-
-**Settings** - network, display, color & audio (3 pages via swipe left)
-<img width="1103" height="759" alt="Settings" src="https://github.com/user-attachments/assets/d8b57bbf-a991-4100-881a-8cd8d8bacabf" />
-
-
-**Clock** - time, weather, sunrise/sunset (→ forecast on swipe right)
-<img width="951" height="481" alt="Clock" src="https://github.com/user-attachments/assets/26a35f9c-ac2d-4aea-9466-72e303b03494" />
-
+- **PPI sweep** — the sweep arm paints traffic the way a real radar does: each aircraft's position,
+  heading and tag update only as the beam crosses its bearing, then stay put until the next pass.
+  One rotation is 6 s; the display refreshes at ~30 fps.
+- **Radar scope** — range rings at 2/3/6/8/10/20/30 mi (default 20 mi ≈ 32 km), compass rose,
+  optional sweep line, five accent colors, rim markers for traffic beyond the outer ring.
+- **Aircraft tags** — callsign, ICAO type and altitude beside every aircraft on the scope, in 4 pt
+  type so labels fit without hiding the picture. Altitude is always feet; cyan means level or
+  climbing, magenta descending.
+- **Traffic source** — [adsb.fi](https://adsb.fi) by default (~2 s poll, up to 64 aircraft), or point
+  it at a **local receiver** (readsb / tar1090 `aircraft.json`) over plain LAN HTTP to skip the
+  internet entirely.
+- **Alerts** — military and emergency-squawk traffic pulse in orange/red; optional watch list by
+  callsign; optionally hide everything else.
+- **Flight detail** — tap a blip for callsign, airline logo and name, route, ICAO type, altitude and
+  speed. Route/airline lookup is optional (see [Optional APIs](#optional-apis)).
+- **Clock & forecast** — NTP time and date, current conditions, sunrise/sunset, and a 3-day forecast.
+  Automatic timezone and DST from your radar center via [timeapi.io](https://timeapi.io) (no key).
+- **Auto-idle clock** — an empty scope falls back to the clock and returns when traffic appears.
+- **Imperial by default** — feet, mph, °F, statute-mile rings. Metric and nautical are one setting away.
+- **Web + on-device settings** — full configuration at `http://flightscnr.local/`, applied live
+  without a reboot, plus three on-device pages. Up to 3 saved Wi-Fi networks with ordered failover.
 
 ## Hardware
 
-
-| Item          | Details                                                                                                                             |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| **Board**     | [LilyGO T-Encoder Pro](https://www.lilygo.cc/zo4apl) - ESP32-S3, 16 MB flash, 8 MB PSRAM                                            |
-| **Display**   | 1.2″ 390×390 AMOLED; auto-detects DXQ120 or TFD12 panel at boot                                                                     |
-| **Enclosure** | [MakerWorld](https://makerworld.com/en/models/2902669-flightscnr-live-ads-b-traffic-sweeping-radar#profileId-3245055) (not in repo) |
-
+| Item | Details |
+| --- | --- |
+| **Board** | [Waveshare ESP32-P4-WIFI6-Touch-LCD-3.4C](https://www.waveshare.com/product/esp32-p4-wifi6-touch-lcd-3.4c.htm) — ESP32-P4, 32 MB flash, 32 MB PSRAM |
+| **Display** | 3.4″ round MIPI-DSI, JD9365 driver. Sold as 800×800; the fitted panel behaves as **720×720** (a center band is dropped if fed 800×800), so the UI is built for 720×720 |
+| **Touch** | GT911 capacitive — **touch only**, no rotary encoder or knob (unlike the original board) |
+| **Wi-Fi** | On-board ESP32-C6 over SDIO (ESP-Hosted); the P4 has no radio of its own |
 
 ## Build & flash
 
-Requires [PlatformIO](https://platformio.org/).
+Requires [PlatformIO](https://platformio.org/) with the
+[pioarduino](https://github.com/pioarduino/platform-espressif32) ESP32-P4 platform (pinned in
+`platformio.ini`; the official espressif32 platform has no P4 support).
 
 ```bash
-python -m platformio run -e tencoder-pro -t upload   # Windows if pio not on PATH
-pio run -e tencoder-pro -t upload                      # otherwise
+pio run -e waveshare-p4-34c -t upload
+pio run -e waveshare-p4-34c -t upload --upload-port COM5   # explicit port
 ```
 
-**WebFlasher (no PlatformIO):** [yashmulgaonkar.github.io/FlightScnr](https://yashmulgaonkar.github.io/FlightScnr) - Connect → choose the latest or an older release → Install. Older releases are offered as full installs for safer downgrades. Hold screen (**BOOT**) if the port doesn’t appear.
-
-**Merged binary:** `pio run -t merge -e tencoder-pro` → `.pio/build/tencoder-pro/firmware-merged.bin`
-
-Builds auto-download [tar1090-db](https://github.com/wiedehopf/tar1090-db) and [Airports](https://github.com/mwgg/Airports) lookups. Wrong panel saved? Erase flash and re-detect, or override with `-D FLIGHTSCNR_PANEL_DXQ` / `-D FLIGHTSCNR_PANEL_TFD12` in `platformio.ini`.
-
-## Device tools
-
-Helpers for checking a change on real hardware (`tools/`, standard library only unless noted):
-
-```bash
-python tools/device_screenshot.py 10.0.0.133 radar.png   # GET /screenshot (RGB565 BMP) -> PNG
-python tools/device_settings.py 10.0.0.133 --dry-run     # dump the live settings form
-python tools/device_settings.py 10.0.0.133 range_mi=32km dist_unit=mi
-python tools/preview_gfxfont.py include/fonts/MontserratBold4pt7b.h "N735RB 12,500ft"
-~/.platformio/penv/Scripts/python.exe tools/serial_capture.py 60 > run.log   # needs pyserial
-```
-
-`device_settings.py` exists because `POST /save` applies the whole form at once — it re-sends every
-current value and overrides only the fields you name, so nothing else gets cleared. API keys are
-never sent (empty means "keep").
-
-`serial_capture.py` clears DTR/RTS so attaching does not reset the board, and timestamps each line:
-consecutive `[sweep] reveal ang=A->B` lines give the true sweep rate, and gaps expose loop stalls.
-
-On Windows, run `pio` with `PYTHONIOENCODING=utf-8 PYTHONUTF8=1` — otherwise upload dies partway
+On **Windows**, prefix with `PYTHONIOENCODING=utf-8 PYTHONUTF8=1` — otherwise the upload dies partway
 through with a cp1252 `UnicodeEncodeError` on esptool's progress bar and then hangs.
+
+```bash
+PYTHONIOENCODING=utf-8 PYTHONUTF8=1 pio run -e waveshare-p4-34c -t upload
+```
+
+Builds auto-download the [tar1090-db](https://github.com/wiedehopf/tar1090-db) aircraft-type database
+and the [Airports](https://github.com/mwgg/Airports) list, then generate headers into `include/`.
+
+> `docs/` holds the upstream WebFlasher page, which targets the original LilyGO board and is not
+> maintained here — build with PlatformIO for this port.
+
+## Setup
+
+1. Power on and join the **FlightScnr-AP** Wi-Fi network when prompted.
+2. Open <http://4.3.2.1> (or `http://flightscnr.local`), enter your Wi-Fi credentials, and reboot.
+3. Set your **radar center** (the position the scope sweeps around) at `http://flightscnr.local/`,
+   along with range, units, accent color and any optional API keys. **Save** applies immediately.
+
+Up to 3 networks can be saved; slot order is preference order. A network that fails repeatedly is
+skipped for the rest of that session without deleting its credentials, and if Wi-Fi stays down the
+setup portal reopens with your networks intact.
+
+## Navigation
+
+Touch only — this board has no knob.
+
+| From | Gesture | Goes to |
+| --- | --- | --- |
+| Radar | tap a blip | that aircraft's flight detail |
+| Radar | swipe ↓ / ↑ / ← | clock / traffic detail / settings |
+| Clock | swipe ↑ / → / ← | radar / forecast / clock settings |
+| Forecast | swipe ↑ / ← | radar / clock |
+| Flight detail | swipe ↓ or → | back to radar |
+| Settings | swipe ← / → | next page / back |
+
+Screens auto-return to the radar on a configurable timeout.
 
 ## Optional APIs
 
-### Weather (Tomorrow.io)
+Everything below is optional — the radar itself needs no keys.
 
-Sign up at [Tomorrow.io](https://app.tomorrow.io/signup?planid=60d46beae90c3b3549a59ff3), enable **Use Tomorrow.io** on the web portal, paste key, **Save**. Fetches only while clock or forecast is open; refreshes after 30 min.
+| Service | Purpose | Sign-up |
+| --- | --- | --- |
+| [Tomorrow.io](https://app.tomorrow.io/signup?planid=60d46beae90c3b3549a59ff3) | Weather and 3-day forecast | free tier |
+| [AirLabs](https://airlabs.co/signup) | Route + airline lookup (first choice) | free tier |
+| [FlightAware AeroAPI](https://www.flightaware.com/aeroapi/signup/personal) | Route lookup (second) | paid per call |
+| [FR24](https://fr24api.flightradar24.com/docs/getting-started) | Route lookup (third) | paid per call |
 
-### Route / airline (AirLabs, FlightAware, FR24)
+Providers are tried in that order, each with per-key monthly limits and spend counters that reset on
+the calendar month. One live call per uncached callsign on first flight-detail open; results are
+cached in RAM and flash (`/route_cache.csv`, up to 1500 rows, downloadable from the web portal), and
+cached callsigns never count against a limit.
 
-Enable providers and keys on the web portal. Multiple comma-separated keys per provider; per-key monthly limits; counters reset each calendar month (NTP).
+## Device tools
 
-**Order:** AirLabs → FlightAware → FR24 (first enabled provider with quota wins per callsign).
+Helpers in `tools/` for checking changes on real hardware — standard library only unless noted.
+Replace `flightscnr.local` with the device IP if mDNS is unavailable.
 
-One live API call per uncached callsign on first flight-detail open; results cached in RAM + flash (`/route_cache.csv`, up to 1500 rows, downloadable from the portal). Cached callsigns don’t count toward limits.
+```bash
+# Save the live framebuffer as a PNG (GET /screenshot returns an RGB565 BMP)
+python tools/device_screenshot.py flightscnr.local radar.png
 
+# Inspect or change settings without clobbering the rest of the form
+python tools/device_settings.py flightscnr.local --dry-run
+python tools/device_settings.py flightscnr.local range_mi=32km dist_unit=mi
 
-| Service     | Sign up                                                                |
-| ----------- | ---------------------------------------------------------------------- |
-| AirLabs     | [airlabs.co/signup](https://airlabs.co/signup)                         |
-| FlightAware | [aeroapi signup](https://www.flightaware.com/aeroapi/signup/personal)  |
-| FR24        | [fr24api docs](https://fr24api.flightradar24.com/docs/getting-started) |
+# Preview a generated GFXfont header as ASCII art before trusting it on glass
+python tools/preview_gfxfont.py include/fonts/MontserratBold4pt7b.h "N735RB 12,500ft"
 
+# Timestamped serial capture that does not reset the board (needs pyserial)
+~/.platformio/penv/Scripts/python.exe tools/serial_capture.py 60 > run.log
+```
+
+`device_settings.py` exists because `POST /save` applies the entire settings form at once, so a
+partial post silently clears whatever it omits. It re-sends every current value and overrides only
+the fields you name; API keys are never sent, since the firmware treats an empty key as "keep".
+
+`serial_capture.py` clears DTR/RTS so attaching does not reboot the chip, and timestamps every line —
+that is what makes pacing measurable: consecutive `[sweep] reveal ang=A->B` lines give the true sweep
+rate, and gaps between lines expose loop stalls.
+
+Font headers are generated with `tools/ttf_to_gfxfont.py` (needs `pip install freetype-py`).
+
+## Differences from upstream FlightScnr
+
+For anyone coming from the original project:
+
+- **Board and resolution** — Waveshare ESP32-P4 3.4C at native 720×720, replacing the LilyGO
+  T-Encoder Pro's 390×390 AMOLED. Layout is designed for the larger glass (hairline rings, 64×64
+  aircraft icons) instead of scaling a smartwatch-sized design up.
+- **Touch only** — no rotary encoder on this board, so knob interactions were replaced by gestures.
+- **PPI sweep reveal** — aircraft update under the sweep arm per target rather than the whole screen
+  jumping on each ADS-B poll.
+- **Tag rendering** — 4 pt tags on every aircraft on the scope, instead of larger tags limited to the
+  few nearest the center.
+- **Local receiver source** — optional readsb / tar1090 `aircraft.json` feed over LAN.
+- **Imperial defaults** — feet, mph, °F, 20 mi rings.
+- **Wi-Fi** — ESP-Hosted over SDIO to the on-board C6, which makes internal DMA-capable RAM the
+  scarce resource on this port; several buffers live in PSRAM specifically to keep the SDIO RX pool fed.
+
+## Credits
+
+This project stands on other people's work.
+
+**Original project** — [**FlightScnr**](https://github.com/yashmulgaonkar/FlightScnr) by
+[yashmulgaonkar](https://github.com/yashmulgaonkar). The application design, web settings portal,
+radar concept, alerting, route-lookup waterfall and most of the service layer originate there; this
+repository is a hardware port of it. If you enjoy this, support the original author:
+[Buy Me a Coffee](https://buymeacoffee.com/yashmulgaonkar).
+
+**FlightScnr's own inspirations** — [ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar)
+by MatixYo and [deskradar](https://github.com/arvis91/deskradar) by arvis91.
+
+**Data sources**
+
+| Source | Used for |
+| --- | --- |
+| [adsb.fi](https://adsb.fi) | Live ADS-B traffic (community feed — please don't hammer it) |
+| [tar1090-db](https://github.com/wiedehopf/tar1090-db) (wiedehopf) | Aircraft type and registration database |
+| [Airports](https://github.com/mwgg/Airports) (mwgg) | Airport names and coordinates |
+| [timeapi.io](https://timeapi.io) | Timezone and DST from coordinates |
+| [Tomorrow.io](https://www.tomorrow.io/) | Weather and forecast (optional) |
+| [AirLabs](https://airlabs.co/), [FlightAware](https://www.flightaware.com/aeroapi/), [FR24](https://fr24api.flightradar24.com/) | Route and airline lookup (optional) |
+
+**Libraries**
+
+| Library | Author |
+| --- | --- |
+| [GFX Library for Arduino](https://github.com/moononournation/Arduino_GFX) | Moon On Our Nation (`lib/`) |
+| [SensorLib](https://github.com/lewisxhe/SensorsLib) | Lewis He (`lib/`) |
+| Driver Bus Library for Arduino | LILYGO_L (`lib/`) |
+| Waveshare display drivers | Waveshare (`lib/`) |
+| [ArduinoJson](https://github.com/bblanchon/ArduinoJson) | Benoît Blanchon |
+| [WiFiManager](https://github.com/tzapu/WiFiManager) | tzapu |
+| [AnimatedGIF](https://github.com/bitbank2/AnimatedGIF), [JPEGDEC](https://github.com/bitbank2/JPEGDEC) | Larry Bank |
+| [pioarduino platform-espressif32](https://github.com/pioarduino/platform-espressif32) | pioarduino |
+| [esptool-js](https://github.com/espressif/esptool-js) | Espressif (`docs/vendor/`) |
+
+**Font** — [Montserrat](https://github.com/JulietaUla/Montserrat) by Julieta Ulanovsky and
+contributors, under the [SIL Open Font License 1.1](https://openfontlicense.org/).
 
 ## License
 
-### Firmware
+**[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)** — see [LICENSE](LICENSE).
 
-Original application code, tools, and documentation in this repository are licensed under **[Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-nc-sa/4.0/)** ([LICENSE](LICENSE)).
+Inherited from the upstream project (© 2026 yashmulgaonkar) and kept here as required by its
+ShareAlike term. Port changes are © 2026 Erik Salo under the same license.
 
-- **Attribution:** credit the author and link to the license when you share or adapt this work.
-- **NonCommercial:** you may not use this material for commercial purposes without separate permission.
-- **ShareAlike:** adaptations must be released under the same license.
+- **Attribution** — credit the authors and link to the license when you share or adapt this.
+- **NonCommercial** — no commercial use without separate permission from the original author.
+- **ShareAlike** — adaptations must be released under this same license.
 
-Vendored libraries (`lib/Arduino_GFX`, `lib/SensorLib`, and PlatformIO registry dependencies) remain under **their own licenses** (GPL, MIT, etc.). Combining them into a binary does not re-license those components. Comply with each upstream license when you distribute builds.
+Vendored libraries in `lib/`, PlatformIO registry dependencies, bundled fonts and `docs/vendor/`
+remain under **their own licenses** (MIT, BSD, Apache, GPL, OFL as applicable). Bundling them into a
+firmware image does not relicense them — comply with each upstream license when distributing builds.
 
-### Enclosure license
-
-The optional 3D-printed enclosure is **not** part of this firmware repository. Its digital files and physical prints are governed by the license shown on the linked **MakerWorld** model page. That content is published under a **Standard Digital File License**, which includes terms such as:
-
-> This user content is licensed under a Standard Digital File License.  
-> You shall not share, sub-license, sell, rent, host, transfer, or distribute in any way the digital or 3D printed versions of this object, nor any other derivative work of this object in its digital or physical format (including - but not limited to - remixes of this object, and hosting on other digital platforms). The objects may not be used without permission in any way whatsoever in which you charge money, or collect fees.
-
-Always read the full license on MakerWorld before downloading, printing, or sharing the enclosure design.
-
-
-<p align="center">
-  <a href="https://buymeacoffee.com/yashmulgaonkar" target="_blank">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 35px;">
-  </a>
-</p>
+The 3D-printed enclosure from the original project is **not** part of this repository and is governed
+by the Standard Digital File License on its
+[MakerWorld page](https://makerworld.com/en/models/2902669-flightscnr-live-ads-b-traffic-sweeping-radar#profileId-3245055),
+which prohibits redistribution and commercial use. That enclosure fits the original LilyGO board, not
+this one. Read the license there before printing or sharing it.

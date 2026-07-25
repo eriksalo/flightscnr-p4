@@ -2,6 +2,11 @@ Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
 (CC BY-NC-SA 4.0)
 
 Copyright (c) 2026 yashmulgaonkar
+  Original work: FlightScnr — https://github.com/yashmulgaonkar/FlightScnr
+
+Copyright (c) 2026 Erik Salo
+  Port to the Waveshare ESP32-P4 3.4C (720x720), licensed under these same
+  terms as required by the ShareAlike condition below.
 
 This work (firmware source, headers, tools, and documentation in this
 repository, except third-party components listed in README.md) is licensed
