@@ -81,10 +81,14 @@ struct CachedAircraftMarker {
   int y = 0;
   bool beyond_dot = false;
   /** Screen extent (symbol + tag), filled on first use by markerBoundsOf().
-   *  Measuring a tag block costs three textWidth() passes, and the sweep asks
-   *  for these every frame, so they are computed once per marker snapshot. */
-  mutable bool bounds_valid = false;
-  mutable IntRect bounds{};
+   *  Measuring a tag block costs three textWidth() passes and the sweep asks for
+   *  these every frame, so they are computed once per marker snapshot. int16 (and
+   *  bounds_w < 0 as the "not measured yet" marker) keeps the two 64-slot arrays
+   *  off the internal DRAM that TLS handshakes need. */
+  mutable int16_t bounds_x = 0;
+  mutable int16_t bounds_y = 0;
+  mutable int16_t bounds_w = -1;
+  mutable int16_t bounds_h = 0;
 };
 
 /** Aircraft state currently painted into the content sprite / panel. Live ADS-B
@@ -108,13 +112,17 @@ IntRect clampRectToScreen(IntRect r);
 IntRect unionRect(const IntRect& a, const IntRect& b);
 IntRect markerBounds(const CachedAircraftMarker& marker);
 
-/** markerBounds() with the result memoized on the marker. */
-const IntRect& markerBoundsOf(const CachedAircraftMarker& marker) {
-  if (!marker.bounds_valid) {
-    marker.bounds = markerBounds(marker);
-    marker.bounds_valid = true;
+/** markerBounds() with the result memoized on the marker. Bounds are always
+ *  clamped to the screen, so int16 storage is lossless. */
+IntRect markerBoundsOf(const CachedAircraftMarker& marker) {
+  if (marker.bounds_w < 0) {
+    const IntRect b = markerBounds(marker);
+    marker.bounds_x = static_cast<int16_t>(b.x);
+    marker.bounds_y = static_cast<int16_t>(b.y);
+    marker.bounds_w = static_cast<int16_t>(std::max(0, b.w));
+    marker.bounds_h = static_cast<int16_t>(b.h);
   }
-  return marker.bounds;
+  return IntRect{marker.bounds_x, marker.bounds_y, marker.bounds_w, marker.bounds_h};
 }
 
 class DrawScope {
