@@ -19,7 +19,8 @@ bool settingsApplyFromForm(const char* radar_center_str, const char* lat_str,
                            const char* fr24_max_usd, const char* fr24_cost_usd,
                            const char* ui_beep_checkbox, const char* beep_tone_str,
                            const char* bright_pct_str, const char* sweep_line_checkbox,
-                           const char* detail_timeout_str);
+                           const char* detail_timeout_str,
+                           const char* map_underlay_checkbox);
 
 using SettingsSavedCallback = void (*)();
 void settingsSetSavedCallback(SettingsSavedCallback cb);

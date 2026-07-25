@@ -22,6 +22,11 @@ bool displayPrefsSweepLineEnabled();
 void displayPrefsToggleSweepLine();
 void displayPrefsSaveSweepLineFromForm(const char* checkbox_value);
 
+/** When true, the radar draws a dim town underlay beneath the grid. */
+bool displayPrefsMapUnderlayEnabled();
+void displayPrefsToggleMapUnderlay();
+void displayPrefsSaveMapUnderlayFromForm(const char* checkbox_value);
+
 /** When true, an empty radar (no in-range aircraft) auto-opens the clock screen. */
 bool displayPrefsAutoIdleClockEnabled();
 void displayPrefsToggleAutoIdleClock();

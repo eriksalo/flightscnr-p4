@@ -37,6 +37,9 @@ framebuffer, not a mock-up.)*
 - **Aircraft tags** — callsign, ICAO type and altitude beside every aircraft on the scope, in 4 pt
   type so labels fit without hiding the picture. Altitude is always feet; cyan means level or
   climbing, magenta descending.
+- **Town underlay** — a dim slate map of nearby populated places sits beneath the grid for
+  geographic context: most-populous first, labels dropped where they would collide, capped so a wide
+  range over a metro does not bury the scope. Toggle it on the web page ("Show town underlay").
 - **Traffic source** — [adsb.fi](https://adsb.fi) by default (~2 s poll, up to 64 aircraft), or point
   it at a **local receiver** (readsb / tar1090 `aircraft.json`) over plain LAN HTTP to skip the
   internet entirely.
@@ -172,6 +175,18 @@ rate, and gaps between lines expose loop stalls.
 
 Font headers are generated with `tools/ttf_to_gfxfont.py` (needs `pip install freetype-py`).
 
+The town underlay ships as a **regional** extract — the radar never draws past 30 mi, so a worldwide
+gazetteer would be wasted flash. The committed header covers the maintainer's area; regenerate it for
+yours (it downloads GeoNames cities1000 once and caches it):
+
+```bash
+python tools/generate_towns.py --center 40.13,-105.18 --radius-km 400
+python tools/generate_towns.py --min-pop 5000            # fewer, larger towns
+```
+
+With no `--center` it uses `config::kFactoryLatitude/Longitude`. A radar center outside the extract
+simply draws no towns.
+
 ## Differences from upstream FlightScnr
 
 For anyone coming from the original project:
@@ -214,6 +229,7 @@ by MatixYo and [deskradar](https://github.com/arvis91/deskradar) by arvis91.
 | [adsb.fi](https://adsb.fi) | Live ADS-B traffic (community feed — please don't hammer it) |
 | [tar1090-db](https://github.com/wiedehopf/tar1090-db) (wiedehopf) | Aircraft type and registration database |
 | [Airports](https://github.com/mwgg/Airports) (mwgg) | Airport names and coordinates |
+| [GeoNames](https://www.geonames.org/) cities1000 | Town names and coordinates for the map underlay (CC BY 4.0) |
 | [timeapi.io](https://timeapi.io) | Timezone and DST from coordinates |
 | [Tomorrow.io](https://www.tomorrow.io/) | Weather and forecast (optional) |
 | [AirLabs](https://airlabs.co/), [FlightAware](https://www.flightaware.com/aeroapi/), [FR24](https://fr24api.flightradar24.com/) | Route and airline lookup (optional) |

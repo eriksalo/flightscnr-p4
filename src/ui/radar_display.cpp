@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "config.h"
+#include "data/towns_lookup.h"
 #include "hardware/display.h"
 #include "hardware/display_font.h"
 #include "hardware/panel.h"
@@ -35,6 +36,8 @@ uint16_t kColorAircraft = 0x001F;
 uint16_t kColorAircraftPrivate = 0x001F;
 uint16_t kColorAircraftProp = 0x001F;
 uint16_t kColorAircraftOther = 0xFFFF;
+uint16_t kColorMapDot = 0x39C7;
+uint16_t kColorMapLabel = 0x4A69;
 uint16_t kColorTagType = 0x5DFF;
 uint16_t kColorTagAltitudeAscend = 0x07FF;
 uint16_t kColorTagAltitudeDescend = 0xF81F;
@@ -210,6 +213,9 @@ void initPalette() {
       tft.color565(radar::kAircraftPropR, radar::kAircraftPropG, radar::kAircraftPropB);
   radar::kColorAircraftOther = tft.color565(
       radar::kAircraftOtherR, radar::kAircraftOtherG, radar::kAircraftOtherB);
+  radar::kColorMapDot = tft.color565(radar::kMapDotR, radar::kMapDotG, radar::kMapDotB);
+  radar::kColorMapLabel =
+      tft.color565(radar::kMapLabelR, radar::kMapLabelG, radar::kMapLabelB);
   radar::kColorTagType =
       tft.color565(radar::kTagTypeR, radar::kTagTypeG, radar::kTagTypeB);
   radar::kColorTagAltitudeAscend =
@@ -752,6 +758,87 @@ void drawRingScaleLabels(int cx, int cy, int outer_radius) {
   }
 }
 
+/** Soft town underlay: a dim dot and name for populated places inside the scope,
+ *  drawn before the rings so the instrument stays on top. Places arrive sorted by
+ *  population, and a label is skipped when its box would collide with one already
+ *  placed, so the big towns win the space and the small ones drop out quietly. */
+void drawTownUnderlay() {
+  if (data::towns::kCount == 0) {
+    return;
+  }
+  initLabelMetrics();
+
+  const float outer_km = radar::scaleActive().label_km;
+  if (outer_km <= 0.0f) {
+    return;
+  }
+  const float px_per_km = static_cast<float>(radar::kGridOuterRadius) / outer_km;
+  // Keep dots off the very rim where the range labels and edge blips live.
+  const int max_r = radar::kGridOuterRadius - radar::kTownDotRadiusPx - 2;
+
+  displayFontApply(*s_draw, s_tag_style);
+  s_draw->setTextDatum(TextDatum::TopLeft);
+  const int line_h = s_draw->fontHeight();
+
+  IntRect placed[radar::kMaxTownLabels];
+  int placed_count = 0;
+
+  for (size_t i = 0; i < data::towns::kCount && placed_count < radar::kMaxTownLabels; ++i) {
+    const data::towns::Town& town = data::towns::kTowns[i];
+
+    float dx_km = 0.0f;
+    float dy_km = 0.0f;
+    float dist_km = 0.0f;
+    localOffsetFromCenter(town.lat, town.lon, &dx_km, &dy_km, &dist_km);
+    if (dist_km > outer_km) {
+      continue;  // outside the scope at this range
+    }
+    rotateEastNorthForFacing(dx_km, dy_km, &dx_km, &dy_km);
+
+    const int x = radar::kCenterX + static_cast<int>(lroundf(dx_km * px_per_km));
+    const int y = radar::kCenterY - static_cast<int>(lroundf(dy_km * px_per_km));
+    if (distSqFromCenter(x, y) > max_r * max_r) {
+      continue;
+    }
+
+    const int text_w = s_draw->textWidth(town.name);
+    IntRect label(x + radar::kTownDotRadiusPx + radar::kTownLabelGapPx, y - line_h / 2,
+                  text_w, line_h);
+    // Flip to the left of the dot when the label would run off the disc.
+    if (label.x + label.w > radar::kSize - 2) {
+      label.x = x - radar::kTownDotRadiusPx - radar::kTownLabelGapPx - text_w;
+      s_draw->setTextDatum(TextDatum::TopLeft);
+    }
+    if (label.x < 2 || label.y < 2 || label.y + label.h > radar::kSize - 2) {
+      continue;
+    }
+
+    bool collides = false;
+    for (int p = 0; p < placed_count; ++p) {
+      if (rectsOverlap(placed[p], label)) {
+        collides = true;
+        break;
+      }
+    }
+    if (collides) {
+      continue;
+    }
+
+    s_draw->fillCircle(static_cast<int16_t>(x), static_cast<int16_t>(y),
+                       static_cast<int16_t>(radar::kTownDotRadiusPx), radar::kColorMapDot);
+    s_draw->setTextColor(radar::kColorMapLabel, radar::kColorBackground);
+    s_draw->drawString(town.name, static_cast<int16_t>(label.x),
+                       static_cast<int16_t>(label.y));
+
+    // Reserve the dot as well, so another town's label cannot sit on it.
+    placed[placed_count++] = unionRect(
+        label, IntRect(x - radar::kTownDotRadiusPx, y - radar::kTownDotRadiusPx,
+                       radar::kTownDotRadiusPx * 2 + 1, radar::kTownDotRadiusPx * 2 + 1));
+  }
+
+  s_draw->setTextDatum(TextDatum::TopLeft);
+}
+
 template <typename GfxRef>
 void drawStaticGrid(GfxRef& gfx) {
   initLabelMetrics();
@@ -761,6 +848,9 @@ void drawStaticGrid(GfxRef& gfx) {
   const int grid_r = radar::kGridOuterRadius;
 
   gfx.fillScreen(radar::kColorBackground);
+  if (displayPrefsMapUnderlayEnabled()) {
+    drawTownUnderlay();  // beneath the rings: the map is context, not instrument
+  }
   drawRings(cx, cy, grid_r);
   drawGridSpokes(cx, cy, grid_r, radar::kColorGrid);
   drawCardinalLabels();

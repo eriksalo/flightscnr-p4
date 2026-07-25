@@ -357,6 +357,8 @@ void handleSettingsPage() {
   }
   appendToggle(page, kSettingsPageCap, &used, "show_sweep", "Show radar sweep line",
                ui::displayPrefsSweepLineEnabled());
+  appendToggle(page, kSettingsPageCap, &used, "map_underlay", "Show town underlay",
+               ui::displayPrefsMapUnderlayEnabled());
 
   appendRaw(page, kSettingsPageCap, &used, "</div></details>");
 
@@ -836,7 +838,8 @@ void handleSave() {
       s_server->arg("flightaware_cost_usd").c_str(), s_server->arg("fr24_max_usd").c_str(),
       s_server->arg("fr24_cost_usd").c_str(), s_server->arg("ui_beep").c_str(),
       s_server->arg("beep_tone").c_str(), s_server->arg("bright_pct").c_str(),
-      s_server->arg("show_sweep").c_str(), s_server->arg("detail_timeout").c_str());
+      s_server->arg("show_sweep").c_str(), s_server->arg("detail_timeout").c_str(),
+      s_server->arg("map_underlay").c_str());
 
   const bool use_weather_before = services::apikeys::useWeather();
   const bool weather_key_saved =

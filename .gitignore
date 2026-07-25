@@ -25,3 +25,6 @@ tools/.cache/
 Thumbs.db
 # Local reference repos (FlightScnr_Pi, Waveshare demos)
 reference/
+
+# GeoNames gazetteer cache for tools/generate_towns.py (10 MB, regenerated on demand)
+tools/cities1000.txt

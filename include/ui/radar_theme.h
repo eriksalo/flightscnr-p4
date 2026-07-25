@@ -47,6 +47,13 @@ constexpr int kAircraftLabelGapPx = 6;
 /** Keep icon inside outer ring by at least this inset (px). */
 constexpr int kAircraftInsideRingInsetPx = kAircraftIconRadiusPx + 3;
 
+/** Town underlay: places are taken most-populous first and placement stops at
+ *  this many labels, so a wide range over a metro does not bury the scope. */
+constexpr int kMaxTownLabels = 14;
+/** Town dot radius and the gap from dot to label (px). */
+constexpr int kTownDotRadiusPx = 2;
+constexpr int kTownLabelGapPx = 4;
+
 /** Beyond-ring traffic: compact aircraft icons on screen rim. */
 constexpr int kBeyondRingScreenMarginPx = 5;
 /** Aircraft tags use displayFontTag() directly (4pt, 10px line) rather than the
@@ -110,6 +117,15 @@ constexpr uint8_t kAircraftPropB = 255;
 constexpr uint8_t kAircraftOtherR = 200;  // rotor, military, glider, drone, unknown
 constexpr uint8_t kAircraftOtherG = 210;
 constexpr uint8_t kAircraftOtherB = 220;
+/** Town underlay: dim slate so the map reads as background, well below the grid
+ *  and the aircraft. Dots are a touch brighter than their labels. */
+constexpr uint8_t kMapDotR = 84;
+constexpr uint8_t kMapDotG = 98;
+constexpr uint8_t kMapDotB = 110;
+constexpr uint8_t kMapLabelR = 104;
+constexpr uint8_t kMapLabelG = 118;
+constexpr uint8_t kMapLabelB = 132;
+
 constexpr uint8_t kTagTypeR = 255;
 constexpr uint8_t kTagTypeG = 200;
 constexpr uint8_t kTagTypeB = 0;
@@ -131,6 +147,8 @@ extern uint16_t kColorAircraft;         // commercial jets
 extern uint16_t kColorAircraftPrivate;  // business jets
 extern uint16_t kColorAircraftProp;     // piston / turboprop
 extern uint16_t kColorAircraftOther;    // rotor, military, glider, drone, unknown
+extern uint16_t kColorMapDot;
+extern uint16_t kColorMapLabel;
 extern uint16_t kColorTagType;
 extern uint16_t kColorTagAltitudeAscend;
 extern uint16_t kColorTagAltitudeDescend;

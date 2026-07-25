@@ -11,6 +11,7 @@ constexpr char kStoreNs[] = "flightscnr";
 constexpr char kDetailTimeoutKey[] = "detail_to";
 constexpr char kClockTimeoutKey[] = "clock_to";
 constexpr char kSweepLineKey[] = "sweep_en";
+constexpr char kMapUnderlayKey[] = "map_en";
 constexpr char kIdleClockKey[] = "idle_clk";
 
 constexpr uint8_t kDefaultDetailTimeoutSec = 10;
@@ -21,6 +22,7 @@ uint8_t s_flight_detail_timeout_sec = kDefaultDetailTimeoutSec;
 /** 0 = manual; otherwise 5, 10, or 15. */
 uint8_t s_clock_weather_timeout_sec = kDefaultClockTimeoutSec;
 bool s_sweep_line_enabled = true;
+bool s_map_underlay_enabled = true;
 bool s_auto_idle_clock_enabled = true;
 
 constexpr uint8_t kTimeoutOptions[] = {0, 10, 20, 30};
@@ -76,6 +78,14 @@ void persistClockTimeout() {
   }
 }
 
+void persistMapUnderlay() {
+  Preferences prefs;
+  if (prefs.begin(kStoreNs, false)) {
+    prefs.putBool(kMapUnderlayKey, s_map_underlay_enabled);
+    prefs.end();
+  }
+}
+
 void persistSweepLine() {
   Preferences prefs;
   if (prefs.begin(kStoreNs, false)) {
@@ -124,6 +134,7 @@ void displayPrefsBootLoad() {
   s_clock_weather_timeout_sec =
       isValidClockTimeoutSec(clock_stored) ? clock_stored : kDefaultClockTimeoutSec;
   s_sweep_line_enabled = prefs.getBool(kSweepLineKey, true);
+  s_map_underlay_enabled = prefs.getBool(kMapUnderlayKey, true);
   s_auto_idle_clock_enabled = prefs.getBool(kIdleClockKey, true);
   prefs.end();
 }
@@ -240,6 +251,18 @@ void displayPrefsSaveClockWeatherTimeoutFromForm(const char* seconds_str) {
   s_clock_weather_timeout_sec = sec;
   persistClockTimeout();
   Serial.printf("Clock/forecast timeout: %s\n", displayPrefsClockWeatherTimeoutLabel());
+}
+
+bool displayPrefsMapUnderlayEnabled() { return s_map_underlay_enabled; }
+
+void displayPrefsToggleMapUnderlay() {
+  s_map_underlay_enabled = !s_map_underlay_enabled;
+  persistMapUnderlay();
+}
+
+void displayPrefsSaveMapUnderlayFromForm(const char* checkbox_value) {
+  s_map_underlay_enabled = formCheckboxOn(checkbox_value);
+  persistMapUnderlay();
 }
 
 bool displayPrefsSweepLineEnabled() { return s_sweep_line_enabled; }

@@ -31,7 +31,8 @@ bool settingsApplyFromForm(const char* radar_center_str, const char* lat_str,
                            const char* fr24_max_usd, const char* fr24_cost_usd,
                            const char* ui_beep_checkbox, const char* beep_tone_str,
                            const char* bright_pct_str, const char* sweep_line_checkbox,
-                           const char* detail_timeout_str) {
+                           const char* detail_timeout_str,
+                           const char* map_underlay_checkbox) {
   bool loc_ok = false;
   if (radar_center_str != nullptr && radar_center_str[0] != '\0') {
     loc_ok = services::map_center::applyRadarCenterFromForm(radar_center_str);
@@ -56,6 +57,7 @@ bool settingsApplyFromForm(const char* radar_center_str, const char* lat_str,
   hardware::saveBeepToneFromForm(beep_tone_str);
   hardware::displayBrightnessSaveFromForm(bright_pct_str);
   ui::displayPrefsSaveSweepLineFromForm(sweep_line_checkbox);
+  ui::displayPrefsSaveMapUnderlayFromForm(map_underlay_checkbox);
   ui::displayPrefsSaveFlightDetailTimeoutFromForm(detail_timeout_str);
 
   ui::radar::scaleSaveMilesFromForm(range_mi_str);
