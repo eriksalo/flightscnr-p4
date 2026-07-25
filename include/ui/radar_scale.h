@@ -19,9 +19,18 @@ constexpr float kKnotsToMph = 1.15077945f;
 constexpr float kFeetToMeters = 0.3048f;
 
 /** Allowed outer-ring ranges (statute miles). */
-constexpr uint8_t kRangeMileOptions[] = {2, 3, 6, 8, 10, 20, 30};
+constexpr uint8_t kRangeMileOptions[] = {2, 3, 5, 6, 8, 10, 20, 30};
 constexpr size_t kRangeMileOptionCount =
     sizeof(kRangeMileOptions) / sizeof(kRangeMileOptions[0]);
+
+/** Radar swipe zoom ladder: four steps from close-in to wide, each roughly
+ *  double the last. Every value is also in kRangeMileOptions, so the gesture and
+ *  the settings pages / web form never disagree; those still expose the full list
+ *  for fine tuning. With three rings the labels land on 2/3/5, 3/7/10, 7/13/20
+ *  and 10/20/30 miles. */
+constexpr uint8_t kRangeSwipeStepsMi[] = {5, 10, 20, 30};
+constexpr size_t kRangeSwipeStepCount =
+    sizeof(kRangeSwipeStepsMi) / sizeof(kRangeSwipeStepsMi[0]);
 
 /** @deprecated Use kRangeMileOptionCount. Kept for label-metrics sizing loops. */
 constexpr size_t kScaleBandCount = kRangeMileOptionCount;
@@ -34,6 +43,13 @@ void scaleDecrease();
 void scaleStep(int8_t delta);
 void scaleSelect(uint8_t option_index);
 bool scaleSetMiles(uint8_t miles);
+
+/** Move one step along kRangeSwipeStepsMi: delta < 0 zooms in (closer),
+ *  delta > 0 zooms out (wider). Clamps at both ends and returns false when
+ *  nothing changed, so the caller can skip a full radar repaint. A range set
+ *  off-ladder from the web form moves to the next ladder step in that
+ *  direction rather than snapping backwards. */
+bool scaleSwipeStep(int8_t delta);
 bool scaleSaveMilesFromForm(const char* miles_str);
 const ScaleBand& scaleActive();
 uint8_t scaleActiveIndex();

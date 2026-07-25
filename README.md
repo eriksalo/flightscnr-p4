@@ -21,7 +21,7 @@ framebuffer, not a mock-up.)*
 - **PPI sweep** — the sweep arm paints traffic the way a real radar does: each aircraft's position,
   heading and tag update only as the beam crosses its bearing, then stay put until the next pass.
   One rotation is 6 s; the display refreshes at ~30 fps.
-- **Radar scope** — range rings at 2/3/6/8/10/20/30 mi (default 20 mi ≈ 32 km), compass rose,
+- **Radar scope** — swipe left/right to zoom through 5/10/20/30 mi (default 20 mi ≈ 32 km), compass rose,
   optional sweep line, five accent colors, rim markers for traffic beyond the outer ring.
 - **Aircraft tags** — callsign, ICAO type and altitude beside every aircraft on the scope, in 4 pt
   type so labels fit without hiding the picture. Altitude is always feet; cyan means level or
@@ -91,11 +91,27 @@ Touch only — this board has no knob.
 | From | Gesture | Goes to |
 | --- | --- | --- |
 | Radar | tap a blip | that aircraft's flight detail |
-| Radar | swipe ↓ / ↑ / ← | clock / traffic detail / settings |
+| Radar | swipe ← / → | **zoom the scope**: 5 / 10 / 20 / 30 mi |
+| Radar | swipe ↑ | settings |
+| Radar | swipe ↓ | clock |
 | Clock | swipe ↑ / → / ← | radar / forecast / clock settings |
 | Forecast | swipe ↑ / ← | radar / clock |
 | Flight detail | swipe ↓ or → | back to radar |
-| Settings | swipe ← / → | next page / back |
+| Settings | swipe ← / → | next page / back (last page continues to About) |
+
+**Zoom** — swipe left to come in, right to go out, through four range steps:
+
+| Range | Rings | Coverage |
+| --- | --- | --- |
+| 5 mi | 2 / 3 / 5 mi | 8 km |
+| 10 mi | 3 / 7 / 10 mi | 16 km |
+| 20 mi | 7 / 13 / 20 mi | 32 km |
+| 30 mi | 10 / 20 / 30 mi | 48 km |
+
+The ladder clamps at both ends rather than wrapping. The settings pages and web form still expose the
+full preset list (2–30 mi) for anything in between; a range set off the ladder moves to the next step
+in whichever direction you swipe. Note the firmware tracks at most 64 aircraft, so over a busy metro
+the widest step can hit that ceiling and drop traffic.
 
 Screens auto-return to the radar on a configurable timeout.
 

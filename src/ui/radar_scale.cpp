@@ -203,6 +203,35 @@ void scaleSelect(uint8_t option_index) {
   applyMiles(kRangeMileOptions[option_index]);
 }
 
+bool scaleSwipeStep(int8_t delta) {
+  if (delta == 0) {
+    return false;
+  }
+  const uint8_t current = s_active_miles;
+  uint8_t target = current;
+
+  if (delta > 0) {
+    for (size_t i = 0; i < kRangeSwipeStepCount; ++i) {
+      if (kRangeSwipeStepsMi[i] > current) {
+        target = kRangeSwipeStepsMi[i];
+        break;
+      }
+    }
+  } else {
+    for (size_t i = kRangeSwipeStepCount; i-- > 0;) {
+      if (kRangeSwipeStepsMi[i] < current) {
+        target = kRangeSwipeStepsMi[i];
+        break;
+      }
+    }
+  }
+
+  if (target == current) {
+    return false;  // already at the close-in / wide end of the ladder
+  }
+  return scaleSetMiles(target);
+}
+
 bool scaleSetMiles(uint8_t miles) {
   if (!isAllowedMile(miles)) {
     return false;

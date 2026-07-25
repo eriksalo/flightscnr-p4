@@ -945,16 +945,9 @@ void onFlightDetailStep(int8_t delta) {
   }
 }
 
-void onRangeStep(int8_t delta) {
-  if (g_screen != AppScreen::Radar || delta == 0) {
-    return;
-  }
-
-  if (delta > 0) {
-    ui::radar::scaleIncrease();
-  } else {
-    ui::radar::scaleDecrease();
-  }
+/** Log the new range and repaint the scope. Shared by the knob path (a no-op on
+ *  this board, which has no encoder) and the radar zoom swipes. */
+void applyRangeChangeToRadar() {
   char range_label[12];
   ui::radar::formatActiveScaleTag(range_label, sizeof(range_label));
   Serial.printf("Scale: %s (coverage ~%.0f km)\n", range_label,
@@ -971,6 +964,26 @@ void onRangeStep(int8_t delta) {
     ui::radarDisplayDraw();
     noteRadarFullDrawComplete();
   }
+}
+
+void onRangeStep(int8_t delta) {
+  if (g_screen != AppScreen::Radar || delta == 0) {
+    return;
+  }
+  if (delta > 0) {
+    ui::radar::scaleIncrease();
+  } else {
+    ui::radar::scaleDecrease();
+  }
+  applyRangeChangeToRadar();
+}
+
+/** Radar zoom swipe: one step along the four-step ladder (kRangeSwipeStepsMi). */
+void onRangeSwipe(int8_t delta) {
+  if (g_screen != AppScreen::Radar || !ui::radar::scaleSwipeStep(delta)) {
+    return;  // at the end of the ladder: nothing changed, so nothing to repaint
+  }
+  applyRangeChangeToRadar();
 }
 
 void noteSwipeNavigation() {
@@ -1007,7 +1020,8 @@ void handleNavigation() {
     openClockFromRadar();
     navigated = true;
   } else if (swipe == SwipeUp && g_screen == AppScreen::Radar) {
-    openDetailsFromRadar();
+    // Settings moved here from swipe-left, which now zooms the scope.
+    openSettingsFromRadar();
     navigated = true;
   } else if (swipe == SwipeDown && g_screen == AppScreen::Details) {
     returnToRadar(false, true);
@@ -1037,7 +1051,10 @@ void handleNavigation() {
     logNavContext("clock_swipe");
     navigated = true;
   } else if (swipe == SwipeLeft && g_screen == AppScreen::Radar) {
-    openSettingsFromRadar();
+    onRangeSwipe(-1);  // closer in
+    navigated = true;
+  } else if (swipe == SwipeRight && g_screen == AppScreen::Radar) {
+    onRangeSwipe(1);  // wider out
     navigated = true;
   } else if (swipe == SwipeLeft && g_screen == AppScreen::Settings &&
              ui::infoScreenPage() == ui::InfoSettingsPage::Main) {
@@ -1054,6 +1071,15 @@ void handleNavigation() {
     showSettings();
     Serial.println("Screen: settings (3/3)");
     logNavContext("settings_p3");
+    navigated = true;
+  } else if (swipe == SwipeLeft && g_screen == AppScreen::Settings &&
+             ui::infoScreenPage() == ui::InfoSettingsPage::Colors) {
+    // End of the settings chain continues to the about screen, which lost its
+    // swipe-up entry from the radar.
+    openDetailsFromRadar();
+    navigated = true;
+  } else if (swipe == SwipeRight && g_screen == AppScreen::Details) {
+    returnToRadar(false, true);
     navigated = true;
   } else if (swipe == SwipeRight && g_screen == AppScreen::FlightDetail) {
     returnToRadar(false, true);
