@@ -99,6 +99,28 @@ pio run -e tencoder-pro -t upload                      # otherwise
 
 Builds auto-download [tar1090-db](https://github.com/wiedehopf/tar1090-db) and [Airports](https://github.com/mwgg/Airports) lookups. Wrong panel saved? Erase flash and re-detect, or override with `-D FLIGHTSCNR_PANEL_DXQ` / `-D FLIGHTSCNR_PANEL_TFD12` in `platformio.ini`.
 
+## Device tools
+
+Helpers for checking a change on real hardware (`tools/`, standard library only unless noted):
+
+```bash
+python tools/device_screenshot.py 10.0.0.133 radar.png   # GET /screenshot (RGB565 BMP) -> PNG
+python tools/device_settings.py 10.0.0.133 --dry-run     # dump the live settings form
+python tools/device_settings.py 10.0.0.133 range_mi=32km dist_unit=mi
+python tools/preview_gfxfont.py include/fonts/MontserratBold4pt7b.h "N735RB 12,500ft"
+~/.platformio/penv/Scripts/python.exe tools/serial_capture.py 60 > run.log   # needs pyserial
+```
+
+`device_settings.py` exists because `POST /save` applies the whole form at once — it re-sends every
+current value and overrides only the fields you name, so nothing else gets cleared. API keys are
+never sent (empty means "keep").
+
+`serial_capture.py` clears DTR/RTS so attaching does not reset the board, and timestamps each line:
+consecutive `[sweep] reveal ang=A->B` lines give the true sweep rate, and gaps expose loop stalls.
+
+On Windows, run `pio` with `PYTHONIOENCODING=utf-8 PYTHONUTF8=1` — otherwise upload dies partway
+through with a cp1252 `UnicodeEncodeError` on esptool's progress bar and then hangs.
+
 ## Optional APIs
 
 ### Weather (Tomorrow.io)

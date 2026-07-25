@@ -24,13 +24,13 @@ constexpr char kLegacyScaleSlotKey[] = "scale_slot";
 constexpr char kLegacyMilesKey[] = "useMiles";
 constexpr char kLegacyRoseKey[] = "showCard";
 
-constexpr uint8_t kDefaultRangeMiles = 8;
+constexpr uint8_t kDefaultRangeMiles = 20;  // 32 km outer ring
 constexpr uint8_t kLegacyMilesFromIndex[] = {2, 6, 6, 8};
 constexpr uint16_t kFacingStepDeg = 5;
 
 uint8_t s_active_miles = kDefaultRangeMiles;
 ScaleBand s_active_band{};
-DistanceUnit s_distance_unit = DistanceUnit::Km;
+DistanceUnit s_distance_unit = DistanceUnit::StatuteMile;
 bool s_compass_rose = true;
 uint16_t s_facing_deg = 0;
 

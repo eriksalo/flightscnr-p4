@@ -244,7 +244,7 @@ constexpr unsigned long kWeatherMinFetchIntervalMs = 20000UL;  // 20 s
 constexpr uint32_t kMinFreeHeapForWeather = 24000;
 constexpr uint32_t kMinContiguousHeapForWeather = 12000;
 /** Default unit system when the user has not overridden it (true = °F/imperial). */
-constexpr bool kWeatherUseImperialDefault = false;
+constexpr bool kWeatherUseImperialDefault = true;
 
 // --- Off-hours (night mode) ---
 constexpr uint16_t kOffHoursDefaultStartMin = 1320;  // 22:00
