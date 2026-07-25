@@ -4,6 +4,7 @@
 #include <FS.h>
 #include <LittleFS.h>
 #include <WebServer.h>
+#include <esp_heap_caps.h>
 
 #include <freertos/semphr.h>
 
@@ -26,8 +27,32 @@ bool s_dirty = false;
 unsigned long s_last_flush_ms = 0;
 SemaphoreHandle_t s_fs_mutex = nullptr;
 
-/** Merge buffer for flush — must not live on loop task stack (~84 KB at 1500 rows). */
-Entry s_merged[config::kRouteCacheFileMaxEntries];
+/** Merge scratch for flush (~84 KB at 1500 rows) — must not live on the loop task
+ *  stack, and must not live in internal DRAM either. Internal RAM is what the
+ *  ESP-Hosted SDIO RX pool and mbedTLS records compete for: with this array in
+ *  .dram1.bss, a ~79 KB ADS-B response drove DMA-capable free down to ~11 KB and
+ *  panicked the chip in sdio_rx_get_buffer(). PSRAM-only on purpose — if the
+ *  allocation fails the flush is skipped rather than reclaiming internal RAM. */
+class MergeBuffer {
+ public:
+  MergeBuffer()
+      : entries_(static_cast<Entry*>(heap_caps_calloc(config::kRouteCacheFileMaxEntries,
+                                                      sizeof(Entry),
+                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT))) {}
+  ~MergeBuffer() {
+    if (entries_ != nullptr) {
+      heap_caps_free(entries_);
+    }
+  }
+  MergeBuffer(const MergeBuffer&) = delete;
+  MergeBuffer& operator=(const MergeBuffer&) = delete;
+
+  Entry* get() const { return entries_; }
+  bool valid() const { return entries_ != nullptr; }
+
+ private:
+  Entry* entries_;
+};
 
 void ensureFsMutex() {
   if (s_fs_mutex == nullptr) {
@@ -413,6 +438,13 @@ void tick(unsigned long now_ms, ReadRamSlotFn read_slot, size_t max_slots,
     return;
   }
 
+  MergeBuffer merge;
+  if (!merge.valid()) {
+    Serial.println("[route_cache] merge buffer alloc failed (PSRAM); flush skipped");
+    noteFlushAttempt(now_ms);
+    return;
+  }
+  Entry* const s_merged = merge.get();
   size_t merged_count = 0;
 
   for (size_t i = 0; i < max_slots; ++i) {
