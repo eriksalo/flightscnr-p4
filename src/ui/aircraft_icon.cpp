@@ -10,11 +10,17 @@
 #include "data/aircraft_icons_lookup.h"
 #include "hardware/plane_gfx.h"
 #include "services/adsb_client.h"
+#include "ui/radar_theme.h"
 
 namespace ui::aircraft_icon {
 namespace {
 
 constexpr float kDegToRad = 0.01745329252f;
+
+/** Coverage below this is treated as empty. Much lower than the generator's
+ *  kAlphaFloor (which decides what counts as ink when cropping) because blended
+ *  edges are exactly what we want to keep here. */
+constexpr int kIconEdgeFloor = 8;
 
 void normalizeType(const char* in, char* out, size_t out_len) {
   if (out_len == 0) {
@@ -164,6 +170,26 @@ uint8_t militaryFallback(const char* type) {
 
 }  // namespace
 
+ColorGroup colorGroup(uint8_t category) {
+  using C = data::aircraft_icons::Category;
+  switch (static_cast<C>(category)) {
+    case C::large_jet_4:
+    case C::large_jet_2:
+    case C::medium_jet:
+    case C::regional_jet:
+    case C::cargo:
+      return ColorGroup::CommercialJet;
+    case C::business_jet:
+      return ColorGroup::PrivateJet;
+    case C::turboprop:
+    case C::small_prop_single:
+    case C::small_prop_twin:
+      return ColorGroup::Propeller;
+    default:
+      return ColorGroup::Other;
+  }
+}
+
 uint8_t resolveCategory(const services::adsb::Aircraft& aircraft) {
   char type[5] = {};
   normalizeType(aircraft.type, type, sizeof(type));
@@ -212,8 +238,15 @@ bool draw(PlaneGfx& gfx, int cx, int cy, float heading_deg, uint16_t color,
   const float cos_h = cosf(rad);
   const int radius = (side + 1) / 2 + 1;
 
-  // Destination-space sample: every screen pixel is filled (no sparse upscale holes).
-  // Max of nearest 4 source cells keeps thin rotor strokes from sparkling under rotate.
+  // Tint decomposed once: edge pixels are blended toward the radar background so
+  // the silhouette is antialiased. The masks carry real coverage values, which the
+  // old max-of-4 + hard-threshold path threw away — that dilated every shape and
+  // left hard stair-steps once rotated.
+  const int tint_r = ((color >> 11) & 0x1F) * 255 / 31;
+  const int tint_g = ((color >> 5) & 0x3F) * 255 / 63;
+  const int tint_b = (color & 0x1F) * 255 / 31;
+
+  // Destination-space sample: every screen pixel is visited (no upscale holes).
   for (int dy = -radius; dy <= radius; ++dy) {
     for (int dx = -radius; dx <= radius; ++dx) {
       // Inverse of mapLocal (screen offset → icon-local).
@@ -223,7 +256,12 @@ bool draw(PlaneGfx& gfx, int cx, int cy, float heading_deg, uint16_t color,
       const float iy_f = ly * inv_scale + src_half;
       const int ix0 = static_cast<int>(floorf(ix_f));
       const int iy0 = static_cast<int>(floorf(iy_f));
-      uint8_t a = 0;
+      const float fx = ix_f - static_cast<float>(ix0);
+      const float fy = iy_f - static_cast<float>(iy0);
+
+      // Bilinear coverage: keeps thin strokes smooth under rotation instead of
+      // sparkling, without fattening the silhouette.
+      float cov = 0.0f;
       for (int oy = 0; oy <= 1; ++oy) {
         for (int ox = 0; ox <= 1; ++ox) {
           const int ix = ix0 + ox;
@@ -232,18 +270,29 @@ bool draw(PlaneGfx& gfx, int cx, int cy, float heading_deg, uint16_t color,
               iy >= data::aircraft_icons::kIconSide) {
             continue;
           }
-          const uint8_t s = pgm_read_byte(
+          const uint8_t sample = pgm_read_byte(
               &alpha[static_cast<size_t>(iy) * data::aircraft_icons::kIconSide +
                      static_cast<size_t>(ix)]);
-          if (s > a) {
-            a = s;
-          }
+          const float wx = ox ? fx : (1.0f - fx);
+          const float wy = oy ? fy : (1.0f - fy);
+          cov += static_cast<float>(sample) * wx * wy;
         }
       }
-      if (a < data::aircraft_icons::kAlphaFloor) {
-        continue;
+
+      const int a = static_cast<int>(cov + 0.5f);
+      if (a < kIconEdgeFloor) {
+        continue;  // fully transparent: leave the grid underneath alone
       }
-      gfx.fillRect(static_cast<int16_t>(cx + dx), static_cast<int16_t>(cy + dy), 1, 1, color);
+
+      uint16_t px = color;
+      if (a < 250) {
+        const int r = radar::kBgR + (tint_r - radar::kBgR) * a / 255;
+        const int g = radar::kBgG + (tint_g - radar::kBgG) * a / 255;
+        const int b = radar::kBgB + (tint_b - radar::kBgB) * a / 255;
+        px = gfx.color565(static_cast<uint8_t>(r), static_cast<uint8_t>(g),
+                          static_cast<uint8_t>(b));
+      }
+      gfx.fillRect(static_cast<int16_t>(cx + dx), static_cast<int16_t>(cy + dy), 1, 1, px);
     }
   }
   return true;

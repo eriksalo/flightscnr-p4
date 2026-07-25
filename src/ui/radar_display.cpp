@@ -15,6 +15,7 @@
 #include "services/aircraft_type_lookup.h"
 #include "geo/flat_earth.h"
 #include "services/map_center.h"
+#include "ui/aircraft_icon.h"
 #include "ui/aircraft_symbol.h"
 #include "ui/radar_accent.h"
 #include "ui/radar_scale.h"
@@ -31,6 +32,9 @@ uint16_t kColorSweep = 0x0320;
 uint16_t kColorSweepTrail = 0x0320;
 uint16_t kColorLabel = 0xFFFF;
 uint16_t kColorAircraft = 0x001F;
+uint16_t kColorAircraftPrivate = 0x001F;
+uint16_t kColorAircraftProp = 0x001F;
+uint16_t kColorAircraftOther = 0xFFFF;
 uint16_t kColorTagType = 0x5DFF;
 uint16_t kColorTagAltitudeAscend = 0x07FF;
 uint16_t kColorTagAltitudeDescend = 0xF81F;
@@ -200,6 +204,12 @@ void initPalette() {
   radar::kColorLabel = tft.color565(accent.label_r, accent.label_g, accent.label_b);
   radar::kColorAircraft =
       tft.color565(radar::kAircraftR, radar::kAircraftG, radar::kAircraftB);
+  radar::kColorAircraftPrivate = tft.color565(
+      radar::kAircraftPrivateR, radar::kAircraftPrivateG, radar::kAircraftPrivateB);
+  radar::kColorAircraftProp =
+      tft.color565(radar::kAircraftPropR, radar::kAircraftPropG, radar::kAircraftPropB);
+  radar::kColorAircraftOther = tft.color565(
+      radar::kAircraftOtherR, radar::kAircraftOtherG, radar::kAircraftOtherB);
   radar::kColorTagType =
       tft.color565(radar::kTagTypeR, radar::kTagTypeG, radar::kTagTypeB);
   radar::kColorTagAltitudeAscend =
@@ -207,6 +217,21 @@ void initPalette() {
   radar::kColorTagAltitudeDescend = tft.color565(radar::kTagAltDescendR,
                                                  radar::kTagAltDescendG,
                                                  radar::kTagAltDescendB);
+}
+
+/** Body color by aircraft kind: commercial amber, business-jet cyan, propeller
+ *  violet, everything else slate. Alert traffic overrides this while pulsing. */
+uint16_t aircraftBodyColor(const services::adsb::Aircraft& plane) {
+  switch (aircraft_icon::colorGroup(aircraft_icon::resolveCategory(plane))) {
+    case aircraft_icon::ColorGroup::CommercialJet:
+      return radar::kColorAircraft;
+    case aircraft_icon::ColorGroup::PrivateJet:
+      return radar::kColorAircraftPrivate;
+    case aircraft_icon::ColorGroup::Propeller:
+      return radar::kColorAircraftProp;
+    default:
+      return radar::kColorAircraftOther;
+  }
 }
 
 /** Treat small negative rates as level (cyan). */
@@ -299,8 +324,9 @@ bool beyondRingEdgeDotFromLatLon(float lat, float lon, int* out_x, int* out_y) {
 
 void drawBeyondRingMarker(int x, int y, float heading_deg,
                           const services::adsb::Aircraft* aircraft) {
-  aircraft_symbol::drawCompact(*s_draw, x, y, heading_deg, radar::kColorAircraft,
-                               aircraft);
+  const uint16_t color =
+      aircraft != nullptr ? aircraftBodyColor(*aircraft) : radar::kColorAircraftOther;
+  aircraft_symbol::drawCompact(*s_draw, x, y, heading_deg, color, aircraft);
 }
 
 void applyTagStyle() { displayFontApply(*s_draw, s_tag_style); }
@@ -510,7 +536,7 @@ void drawShownMarkers(const IntRect* clip) {
       continue;
     }
     const services::adsb::Aircraft& plane = s_shown_markers[items[d].index].plane;
-    uint16_t color = radar::kColorAircraft;
+    uint16_t color = aircraftBodyColor(plane);
     if (services::alert::isHighlighted(plane)) {
       if (pulse_on) {
         color = plane.isEmergencySquawk() ? radar::kColorAlertEmergency

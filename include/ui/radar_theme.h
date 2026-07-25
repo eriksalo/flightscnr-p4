@@ -94,10 +94,22 @@ constexpr uint8_t kSweepB = 96;
 constexpr uint8_t kSweepTrailR = 12;
 constexpr uint8_t kSweepTrailG = 72;
 constexpr uint8_t kSweepTrailB = 28;
-/** Aircraft icon fill (warm amber). */
-constexpr uint8_t kAircraftR = 255;
+/** Aircraft body colors by kind (see ui::aircraft_icon::ColorGroup). Amber is the
+ *  commercial fleet — the bulk of the traffic — so the scope keeps its familiar
+ *  look; the other groups are picked to stay clear of the green grid and of the
+ *  orange/red alert pulses. */
+constexpr uint8_t kAircraftR = 255;  // commercial jets: amber
 constexpr uint8_t kAircraftG = 180;
 constexpr uint8_t kAircraftB = 40;
+constexpr uint8_t kAircraftPrivateR = 70;  // private / business jets: cyan
+constexpr uint8_t kAircraftPrivateG = 225;
+constexpr uint8_t kAircraftPrivateB = 255;
+constexpr uint8_t kAircraftPropR = 185;  // propeller and turboprop: violet
+constexpr uint8_t kAircraftPropG = 140;
+constexpr uint8_t kAircraftPropB = 255;
+constexpr uint8_t kAircraftOtherR = 200;  // rotor, military, glider, drone, unknown
+constexpr uint8_t kAircraftOtherG = 210;
+constexpr uint8_t kAircraftOtherB = 220;
 constexpr uint8_t kTagTypeR = 255;
 constexpr uint8_t kTagTypeG = 200;
 constexpr uint8_t kTagTypeB = 0;
@@ -115,7 +127,10 @@ extern uint16_t kColorGrid;
 extern uint16_t kColorSweep;
 extern uint16_t kColorSweepTrail;
 extern uint16_t kColorLabel;
-extern uint16_t kColorAircraft;
+extern uint16_t kColorAircraft;         // commercial jets
+extern uint16_t kColorAircraftPrivate;  // business jets
+extern uint16_t kColorAircraftProp;     // piston / turboprop
+extern uint16_t kColorAircraftOther;    // rotor, military, glider, drone, unknown
 extern uint16_t kColorTagType;
 extern uint16_t kColorTagAltitudeAscend;
 extern uint16_t kColorTagAltitudeDescend;

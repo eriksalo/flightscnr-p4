@@ -23,6 +23,17 @@ framebuffer, not a mock-up.)*
   One rotation is 6 s; the display refreshes at ~30 fps.
 - **Radar scope** — swipe left/right to zoom through 5/10/20/30 mi (default 20 mi ≈ 32 km), compass rose,
   optional sweep line, five accent colors, rim markers for traffic beyond the outer ring.
+- **Aircraft icons** — top-down silhouettes per ICAO type (20 shapes, 406 type mappings), rotated to
+  heading and antialiased from 96×96 coverage masks, color-coded by what the aircraft is:
+
+  | Color | Aircraft |
+  | --- | --- |
+  | **Amber** | Commercial jets — airliners, regional jets, freighters |
+  | **Cyan** | Private / business jets |
+  | **Violet** | Propeller and turboprop |
+  | **Slate** | Rotorcraft, military, gliders, drones, unknown |
+
+  Alert traffic (military, emergency squawk) overrides the body color with its orange/red pulse.
 - **Aircraft tags** — callsign, ICAO type and altitude beside every aircraft on the scope, in 4 pt
   type so labels fit without hiding the picture. Altitude is always feet; cyan means level or
   climbing, magenta descending.
@@ -187,6 +198,11 @@ This project stands on other people's work.
 radar concept, alerting, route-lookup waterfall and most of the service layer originate there; this
 repository is a hardware port of it. If you enjoy this, support the original author:
 [Buy Me a Coffee](https://buymeacoffee.com/yashmulgaonkar).
+
+**Aircraft icon silhouettes** — from the FlightScnr Pi project by the same author; this repo commits
+the generated coverage masks (`include/data/aircraft_icons_lookup.h`), while the source PNGs stay out
+of the tree. Regenerate with `python tools/aircraft_icons_to_header.py` after dropping the PNGs into
+`assets/aircraft_icons/`.
 
 **FlightScnr's own inspirations** — [ESP32-Plane-Radar](https://github.com/MatixYo/ESP32-Plane-Radar)
 by MatixYo and [deskradar](https://github.com/arvis91/deskradar) by arvis91.

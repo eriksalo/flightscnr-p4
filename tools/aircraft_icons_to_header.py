@@ -24,7 +24,7 @@ except ImportError:
     print("Pillow required: pip install Pillow")
     sys.exit(1)
 
-ICON_SIDE = 64
+ICON_SIDE = 96
 # Soft edges below this are treated as transparent at draw time too.
 ALPHA_FLOOR = 24
 
