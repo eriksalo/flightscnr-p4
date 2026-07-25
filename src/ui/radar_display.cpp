@@ -75,6 +75,14 @@ float s_last_painted_sweep_deg = 0.0f;
 unsigned long s_last_sweep_paint_ms = 0;
 bool s_display_sweep_init = false;
 
+/** What the beam still owes a target; planned once per poll by planReveal(). */
+enum : uint8_t {
+  kRevealIdle = 0,  /** nothing pending */
+  kRevealUpdate,    /** live entry replaces shown[reveal_slot] */
+  kRevealAdd,       /** live entry is new to the scope */
+  kRevealRetire,    /** shown entry left the feed */
+};
+
 struct CachedAircraftMarker {
   services::adsb::Aircraft plane{};
   int x = 0;
@@ -89,6 +97,12 @@ struct CachedAircraftMarker {
   mutable int16_t bounds_y = 0;
   mutable int16_t bounds_w = -1;
   mutable int16_t bounds_h = 0;
+  /** Shown entries only: cleared when the beam retires the blip. Retired slots
+   *  are compacted at the next poll so reveal_slot stays valid for a cycle. */
+  bool alive = true;
+  uint8_t reveal_state = kRevealIdle;
+  /** Live entries with kRevealUpdate: shown slot this target replaces. */
+  int8_t reveal_slot = -1;
 };
 
 /** Aircraft state currently painted into the content sprite / panel. Live ADS-B
@@ -101,6 +115,8 @@ size_t s_shown_marker_count = 0;
 CachedAircraftMarker s_current_aircraft_markers[services::adsb::kMaxAircraft];
 bool s_marker_prev_used[services::adsb::kMaxAircraft] = {};
 
+/** Valid entries in s_current_aircraft_markers while a reveal plan is running. */
+size_t s_live_marker_count = 0;
 /** Live ADS-B data may differ from s_shown_markers; beam reveal still has work. */
 bool s_reveal_pending = false;
 /** Adopt live aircraft state on the next content rebuild (no-reveal fallbacks). */
@@ -450,6 +466,9 @@ void drawShownMarkers(const IntRect* clip) {
   const bool hide_others = services::alert::hideNonAlertedEnabled();
   for (size_t i = 0; i < s_shown_marker_count; ++i) {
     const CachedAircraftMarker& marker = s_shown_markers[i];
+    if (!marker.alive) {
+      continue;
+    }
     if (hide_others && !services::alert::isHighlighted(marker.plane)) {
       continue;
     }
@@ -1100,6 +1119,12 @@ size_t collectAircraftMarkers(CachedAircraftMarker* markers, size_t max_markers)
 
     CachedAircraftMarker& marker = markers[count];
     marker.plane = planes[i];
+    // These arrays are reused every poll: drop the previous occupant's measured
+    // extent and reveal bookkeeping, or this target inherits the wrong rect.
+    marker.bounds_w = -1;
+    marker.alive = true;
+    marker.reveal_state = kRevealIdle;
+    marker.reveal_slot = -1;
 
     if (isInsideOuterRingKm(dist_km)) {
       latLonToScreen(planes[i].lat, planes[i].lon, &marker.x, &marker.y);
@@ -1204,6 +1229,7 @@ void syncShownMarkersToLive() {
       collectAircraftMarkers(s_shown_markers, services::adsb::kMaxAircraft);
   s_reveal_pending = false;
   s_aircraft_sync_pending = false;
+  s_live_marker_count = 0;
 }
 
 /** Screen bearing of a marker in sweep coordinates: 0 = up, clockwise. */
@@ -1253,20 +1279,88 @@ void repaintRegion(const IntRect& rect) {
   tft.setTextDatum(TextDatum::TopLeft);
 }
 
-/** Copy live ADS-B state into the shown snapshot for every target the spoke just
- *  crossed, repainting only those targets' regions. Blips therefore appear, step,
- *  and fade out under the beam instead of the whole scope updating at once. */
+/** Drop blips the beam has retired. Called before planning a new poll so the
+ *  reveal_slot indices handed out below stay valid for the whole cycle. */
+void compactShownMarkers() {
+  size_t write_i = 0;
+  for (size_t i = 0; i < s_shown_marker_count; ++i) {
+    if (!s_shown_markers[i].alive) {
+      continue;
+    }
+    if (write_i != i) {
+      s_shown_markers[write_i] = s_shown_markers[i];
+    }
+    ++write_i;
+  }
+  s_shown_marker_count = write_i;
+}
+
+/** Match the new ADS-B picture against what is on screen and record what the
+ *  beam owes each target. Run once per poll: the identity matching is O(n^2)
+ *  strcmp and marker projection is trig-heavy, neither of which belongs in a
+ *  33 ms sweep frame. */
+void planReveal() {
+  compactShownMarkers();
+
+  s_live_marker_count =
+      collectAircraftMarkers(s_current_aircraft_markers, services::adsb::kMaxAircraft);
+
+  for (size_t p = 0; p < s_shown_marker_count; ++p) {
+    s_shown_markers[p].reveal_state = kRevealIdle;
+  }
+
+  memset(s_marker_prev_used, 0, sizeof(s_marker_prev_used));  // indexed by shown slot
+  bool pending = false;
+
+  for (size_t c = 0; c < s_live_marker_count; ++c) {
+    CachedAircraftMarker& live = s_current_aircraft_markers[c];
+    int shown_i = -1;
+    for (size_t p = 0; p < s_shown_marker_count; ++p) {
+      if (s_marker_prev_used[p]) {
+        continue;
+      }
+      if (aircraftIdentityMatch(s_shown_markers[p].plane, live.plane)) {
+        shown_i = static_cast<int>(p);
+        break;
+      }
+    }
+
+    if (shown_i < 0) {
+      live.reveal_state = kRevealAdd;
+      pending = true;
+      continue;
+    }
+
+    s_marker_prev_used[static_cast<size_t>(shown_i)] = true;
+    if (markerVisualChanged(s_shown_markers[static_cast<size_t>(shown_i)], live)) {
+      live.reveal_state = kRevealUpdate;
+      live.reveal_slot = static_cast<int8_t>(shown_i);
+      pending = true;
+    }
+  }
+
+  for (size_t p = 0; p < s_shown_marker_count; ++p) {
+    if (!s_marker_prev_used[p]) {
+      s_shown_markers[p].reveal_state = kRevealRetire;
+      pending = true;
+    }
+  }
+
+  s_reveal_pending = pending;
+}
+
+/** Apply the planned work for every target the spoke just crossed, repainting
+ *  only those targets' regions. Blips therefore appear, step, and drop out under
+ *  the beam instead of the whole scope updating at once. Per frame this costs one
+ *  bearing comparison per pending target — no matching, no projection. */
 void revealAircraftUnderBeam(float from_deg, float to_deg) {
-  initLabelMetrics();
   if (!s_reveal_pending || !s_bg_ready || !s_content_ready || !s_content_base_valid) {
     return;
   }
   if (normalizeSweepDeg(to_deg - from_deg) <= 0.0f) {
     return;
   }
-
-  const size_t live_count =
-      collectAircraftMarkers(s_current_aircraft_markers, services::adsb::kMaxAircraft);
+  initLabelMetrics();
 
   // Regions to repaint this frame; kept separate (not unioned) so a wide-apart
   // pair does not turn into a quadrant-sized blit.
@@ -1284,74 +1378,71 @@ void revealAircraftUnderBeam(float from_deg, float to_deg) {
     }
   };
 
-  memset(s_marker_prev_used, 0, sizeof(s_marker_prev_used));
-  bool still_pending = false;
-  size_t write_i = 0;
+  bool pending = false;
 
-  // Pass 1: moved/changed targets update in place; stale ones drop out.
-  for (size_t p = 0; p < s_shown_marker_count; ++p) {
-    const CachedAircraftMarker shown = s_shown_markers[p];
-    int live_i = -1;
-    for (size_t c = 0; c < live_count; ++c) {
-      if (s_marker_prev_used[c]) {
+  for (size_t c = 0; c < s_live_marker_count; ++c) {
+    CachedAircraftMarker& live = s_current_aircraft_markers[c];
+    if (live.reveal_state == kRevealIdle) {
+      continue;
+    }
+
+    if (live.reveal_state == kRevealUpdate) {
+      const size_t slot = static_cast<size_t>(live.reveal_slot);
+      if (live.reveal_slot < 0 || slot >= s_shown_marker_count) {
+        live.reveal_state = kRevealIdle;  // snapshot was resynced under us
         continue;
       }
-      if (aircraftIdentityMatch(s_current_aircraft_markers[c].plane, shown.plane)) {
-        live_i = static_cast<int>(c);
-        break;
+      CachedAircraftMarker& shown = s_shown_markers[slot];
+      // Either bearing counts: a target that moved counter-sweep is still painted
+      // (and its old blip erased) on the pass that reaches it first.
+      if (!beamCrossed(from_deg, to_deg, markerBearingDeg(live)) &&
+          !beamCrossed(from_deg, to_deg, markerBearingDeg(shown))) {
+        pending = true;
+        continue;
       }
-    }
-
-    if (live_i < 0) {
-      // Dropped from the feed: the blip fades when the beam next sweeps it.
-      if (beamCrossed(from_deg, to_deg, markerBearingDeg(shown))) {
-        add_rect(markerBoundsOf(shown));
-        continue;  // do not carry into the compacted snapshot
-      }
-      still_pending = true;
-      s_shown_markers[write_i++] = shown;
-      continue;
-    }
-
-    s_marker_prev_used[static_cast<size_t>(live_i)] = true;
-    const CachedAircraftMarker& live = s_current_aircraft_markers[static_cast<size_t>(live_i)];
-    if (!markerVisualChanged(shown, live)) {
-      s_shown_markers[write_i++] = shown;
-      continue;
-    }
-
-    // Either bearing counts: a target that moved counter-sweep is still painted
-    // (and its old blip erased) on the pass that reaches it first.
-    if (beamCrossed(from_deg, to_deg, markerBearingDeg(live)) ||
-        beamCrossed(from_deg, to_deg, markerBearingDeg(shown))) {
       add_rect(unionRect(markerBoundsOf(shown), markerBoundsOf(live)));
-      s_shown_markers[write_i++] = live;
-    } else {
-      still_pending = true;
-      s_shown_markers[write_i++] = shown;
-    }
-  }
-  s_shown_marker_count = write_i;
-
-  // Pass 2: targets new to the feed paint in as the beam reaches them.
-  for (size_t c = 0; c < live_count; ++c) {
-    if (s_marker_prev_used[c]) {
+      shown = live;
+      shown.alive = true;
+      shown.reveal_state = kRevealIdle;
+      shown.reveal_slot = -1;
+      live.reveal_state = kRevealIdle;
       continue;
     }
-    const CachedAircraftMarker& live = s_current_aircraft_markers[c];
+
+    // kRevealAdd: a target new to the feed paints in as the beam reaches it.
     if (!beamCrossed(from_deg, to_deg, markerBearingDeg(live))) {
-      still_pending = true;
+      pending = true;
       continue;
     }
     if (s_shown_marker_count >= services::adsb::kMaxAircraft) {
-      still_pending = true;
+      pending = true;
       continue;
     }
-    s_shown_markers[s_shown_marker_count++] = live;
-    add_rect(markerBoundsOf(live));
+    CachedAircraftMarker& dst = s_shown_markers[s_shown_marker_count++];
+    dst = live;
+    dst.alive = true;
+    dst.reveal_state = kRevealIdle;
+    dst.reveal_slot = -1;
+    add_rect(markerBoundsOf(dst));
+    live.reveal_state = kRevealIdle;
   }
 
-  s_reveal_pending = still_pending;
+  for (size_t p = 0; p < s_shown_marker_count; ++p) {
+    CachedAircraftMarker& shown = s_shown_markers[p];
+    if (shown.reveal_state != kRevealRetire) {
+      continue;
+    }
+    // Dropped from the feed: the blip goes dark when the beam next sweeps it.
+    if (!beamCrossed(from_deg, to_deg, markerBearingDeg(shown))) {
+      pending = true;
+      continue;
+    }
+    add_rect(markerBoundsOf(shown));
+    shown.alive = false;
+    shown.reveal_state = kRevealIdle;
+  }
+
+  s_reveal_pending = pending;
 
   for (int i = 0; i < rect_count; ++i) {
     repaintRegion(rects[i]);
@@ -1360,7 +1451,7 @@ void revealAircraftUnderBeam(float from_deg, float to_deg) {
   if (config::kRadarSweepTraceDebug && rect_count > 0) {
     Serial.printf("[sweep] reveal ang=%.1f->%.1f rects=%d shown=%u pending=%d\n", from_deg,
                   to_deg, rect_count, static_cast<unsigned>(s_shown_marker_count),
-                  s_reveal_pending ? 1 : 0);
+                  pending ? 1 : 0);
   }
 }
 
@@ -1570,7 +1661,7 @@ void radarDisplayRefreshAircraft() {
   // the spoke crosses its bearing, so blips update under the beam.
   if (radar::kSweepPaintsAircraft && displayPrefsSweepLineEnabled() && s_bg_ready &&
       ensureContentSprite()) {
-    s_reveal_pending = true;
+    planReveal();
     if (config::kRadarSweepTraceDebug) {
       Serial.println("[sweep] aircraft_refresh queued for beam reveal");
     }
