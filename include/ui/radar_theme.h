@@ -49,12 +49,11 @@ constexpr int kAircraftInsideRingInsetPx = kAircraftIconRadiusPx + 3;
 
 /** Beyond-ring traffic: compact aircraft icons on screen rim. */
 constexpr int kBeyondRingScreenMarginPx = 5;
-/** Target cap height (px) for aircraft tags (bold, slightly above scale label). */
-constexpr int kAircraftTagLabelHeightPx = 24;
-/** Declutter: full tags only for this many aircraft nearest to center (alert
- *  traffic is always tagged); the rest draw icon-only. At wide range over a
- *  busy metro, tagging everything makes the center unreadable. */
-constexpr size_t kMaxTaggedAircraft = 8;
+/** Aircraft tags use displayFontTag() directly (4pt, 10px line) rather than the
+ *  dynamic height picker — at this size the picker ladder has no rung to hit.
+ *  Every aircraft on the scope is tagged: the old nearest-N declutter meant
+ *  labels only ever appeared in the middle of the display, and 4pt type is
+ *  roughly a third the width of the 10pt it replaced, so they now fit. */
 
 /** Radar sweep: one full rotation period (ms). */
 constexpr unsigned long kSweepPeriodMs = 6000;

@@ -14,6 +14,7 @@
 #include "fonts/MontserratBold22pt7b.h"
 #include "fonts/MontserratBold24pt7b.h"
 #include "fonts/MontserratBold26pt7b.h"
+#include "fonts/MontserratBold4pt7b.h"
 #include "fonts/MontserratBold63pt7b.h"
 #include "fonts/MontserratBold8pt7b.h"
 #include "fonts/MontserratBold9pt7b.h"
@@ -50,7 +51,9 @@ UiTextStyle displayFontCardinal() { return UiTextStyle{&MontserratBold14pt7b}; }
 
 UiTextStyle displayFontScale() { return UiTextStyle{&MontserratBold10pt7b}; }
 
-UiTextStyle displayFontTag() { return UiTextStyle{&MontserratBold12pt7b}; }
+// Radar aircraft tags: 4pt (10px yAdvance, ~6px cap). Deliberately tiny so every
+// aircraft on the scope can carry a label without the tags colliding.
+UiTextStyle displayFontTag() { return UiTextStyle{&MontserratBold4pt7b}; }
 
 UiTextStyle displayFontClockTime() { return UiTextStyle{&MontserratBold63pt7b}; }
 

@@ -163,7 +163,7 @@ void initLabelMetrics() {
   const int cardinal_h = displayFontHeight(tft, s_cardinal_style);
   s_scale_style =
       pickTextSizeForHeight(cardinal_h - radar::kScaleBelowCardinalPx, 0, 3);
-  s_tag_style = pickTextSizeForHeight(radar::kAircraftTagLabelHeightPx, 2, 4);
+  s_tag_style = displayFontTag();  // explicit 4pt; below the picker ladder
 
   displayFontApply(tft, s_scale_style);
   s_scale_label_h = tft.fontHeight();
@@ -524,10 +524,6 @@ void drawShownMarkers(const IntRect* clip) {
   }
   for (size_t d = 0; d < draw_count; ++d) {
     const services::adsb::Aircraft& plane = s_shown_markers[items[d].index].plane;
-    // Far-first order: the nearest kMaxTaggedAircraft are at the tail.
-    if (draw_count - d > radar::kMaxTaggedAircraft && !services::alert::isHighlighted(plane)) {
-      continue;
-    }
     if (clipped_out(items[d].index)) {
       continue;
     }
