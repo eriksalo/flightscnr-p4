@@ -39,6 +39,10 @@ SwipeGesture inputConsumeSwipe();
 /** Poll for knob long-press (Wi-Fi reset). May reboot the device. */
 void inputPollLongPress();
 
+/** True once per contact when the screen has been held still for
+ *  config::kWifiSetupHoldMs. The hold does not also report a tap on release. */
+bool inputConsumeLongPress();
+
 /**
  * True once when the user released the knob after the Wi-Fi reset countdown UI
  * was shown (abort). Caller should redraw the active screen.

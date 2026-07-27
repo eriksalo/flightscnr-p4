@@ -1334,12 +1334,36 @@ void tickWeather() {
   }
 }
 
+/** Hold the radar screen to reach Wi-Fi setup. This is the only way onto a
+ *  different network when the current one is down: the web page needs the LAN
+ *  it lives on, and this board has no knob for the original's hold-to-reset.
+ *  Saved networks are kept — the portal adds to them. */
+void handleWifiSetupHold() {
+  if (!inputConsumeLongPress()) {
+    return;
+  }
+  if (g_screen != AppScreen::Radar) {
+    return;  // only from the home screen, so settings screens keep their taps
+  }
+
+  Serial.println("[wifi] screen hold — opening Wi-Fi setup");
+  inputDiscardPendingInteractions();
+
+  // Blocks while the portal is up (it draws its own instructions), then either
+  // reboots onto the new network or falls back here after the timeout.
+  wifiOpenSetupPortalOnDemand();
+
+  inputDiscardPendingInteractions();
+  returnToRadar(false, true);
+}
+
 void handleInput() {
   inputPoll();
   inputPollLongPress();
   if (inputConsumeWifiResetUiCancelled()) {
     applySettingsLive();
   }
+  handleWifiSetupHold();
   handleNavigation();
 
   if (g_screen == AppScreen::Radar) {

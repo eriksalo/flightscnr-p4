@@ -1102,6 +1102,32 @@ bool runConfigPortalFlow() {
 
 }  // namespace
 
+bool wifiOpenSetupPortalOnDemand() {
+  Serial.println("[wifi] on-demand setup portal requested");
+  WiFiManager wm;
+  configureWifiManager(wm);
+  // Unlike the boot portal, this one must not wait forever: the radar is
+  // running and an accidental screen hold should not strand it in AP mode.
+  wm.setConfigPortalTimeout(config::kWifiOnDemandPortalTimeoutSec);
+
+  if (openConfigPortal(wm) && wifiLinkUp()) {
+    Serial.printf("Connected: %s  IP %s\n", WiFi.SSID().c_str(),
+                  WiFi.localIP().toString().c_str());
+    onStaLinkReady();
+    // Saved networks are untouched; the new one was added to the store by the
+    // portal handler. Reboot so every service restarts on the new link.
+    Serial.println("WiFi configured — rebooting");
+    delay(400);
+    esp_restart();
+    return true;
+  }
+
+  s_active_wm = nullptr;
+  Serial.println("[wifi] setup portal closed with no new network — reconnecting");
+  wifiTryConnectPreferred(true);
+  return false;
+}
+
 uint8_t wifiNetsCount() {
   ensureNetsLoaded();
   return s_nets_count;

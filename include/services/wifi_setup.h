@@ -12,6 +12,13 @@ bool wifiSetupConnect();
  *  the setup portal (keeps saved networks) so a new network can be added. */
 bool wifiReconnect();
 
+/** Open the setup portal on demand, keeping every saved network: use this to
+ *  join a different Wi-Fi when the current one is unavailable, which is
+ *  otherwise impossible without the LAN the web page lives on. Gives up after
+ *  config::kWifiOnDemandPortalTimeoutSec and reconnects, so an accidental
+ *  trigger recovers by itself. Returns true if a network was configured. */
+bool wifiOpenSetupPortalOnDemand();
+
 /** Disconnect and reconnect STA without erasing saved credentials (TLS recovery). */
 bool wifiSoftRecycle();
 

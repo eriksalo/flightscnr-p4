@@ -112,6 +112,7 @@ Touch only — this board has no knob.
 | Forecast | swipe ↑ / ← | radar / clock |
 | Flight detail | swipe ↓ or → | back to radar |
 | Settings | swipe ← / → | next page / back (last page continues to About) |
+| Radar | **hold ~3.5 s** | Wi-Fi setup portal — see below |
 
 **Zoom** — swipe left to come in, right to go out, through four range steps:
 
@@ -128,6 +129,23 @@ in whichever direction you swipe. Note the firmware tracks at most 64 aircraft, 
 the widest step can hit that ceiling and drop traffic.
 
 Screens auto-return to the radar on a configurable timeout.
+
+### Joining a different Wi-Fi
+
+The web settings page only helps while the radar is already on your network. If that network is gone —
+new router, new password, away from home — **hold the radar screen for about 3.5 seconds**. The device
+raises its own access point and shows what to do:
+
+1. Join **FlightScnr-AP** from a phone or laptop.
+2. Open <http://4.3.2.1> (or `http://flightscnr.local`), pick a network from the scan list, enter the
+   password, and save.
+
+Saved networks are **kept** — the new one is added alongside them (up to 3, in preference order), so
+this is also how you add a second network without losing the first. The radar pauses while the portal
+is open and reboots onto the new network once configured. If nothing connects within 5 minutes the
+portal gives up and the radar reconnects on its own, so an accidental hold cannot strand the device.
+
+Holding only works from the radar screen, and a swipe or a brief tap will not trigger it.
 
 ## Optional APIs
 

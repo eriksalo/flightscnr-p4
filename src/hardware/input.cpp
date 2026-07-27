@@ -19,6 +19,10 @@ portMUX_TYPE s_input_mux = portMUX_INITIALIZER_UNLOCKED;
 volatile int16_t s_tap_x = -1;
 volatile int16_t s_tap_y = -1;
 volatile SwipeGesture s_swipe_pending = SwipeNone;
+volatile bool s_long_press_pending = false;
+/** Set once the current contact has already reported a long press, so it does
+ *  not also land as a tap when the finger lifts. */
+bool s_long_press_fired = false;
 
 esp_lcd_touch_handle_t s_touch = nullptr;
 bool s_touch_ready = false;
@@ -28,6 +32,8 @@ int16_t s_touch_start_y = 0;
 int16_t s_touch_last_x = 0;
 int16_t s_touch_last_y = 0;
 unsigned long s_touch_last_down_ms = 0;
+/** When the current contact began, for hold detection. */
+unsigned long s_touch_down_ms = 0;
 
 /** The GT911 reports the finger as present only intermittently during a drag
  *  (status flickers between polls). Treat contact as ended only after this
@@ -60,7 +66,17 @@ void queueTap(int16_t x, int16_t y) {
   portEXIT_CRITICAL(&s_input_mux);
 }
 
+void queueLongPress() {
+  portENTER_CRITICAL(&s_input_mux);
+  s_long_press_pending = true;
+  portEXIT_CRITICAL(&s_input_mux);
+}
+
 void finishTouchGesture() {
+  if (s_long_press_fired) {
+    return;  // the hold was the gesture; do not also fire a tap
+  }
+
   const int dx = s_touch_last_x - s_touch_start_x;
   const int dy = s_touch_last_y - s_touch_start_y;
   const int adx = std::abs(dx);
@@ -98,12 +114,24 @@ void pollTouchGt911() {
       // First contact of a new gesture: anchor the start point.
       s_touch_start_x = lx;
       s_touch_start_y = ly;
+      s_touch_down_ms = now;
+      s_long_press_fired = false;
       s_touch_tracking = true;
       hardware::buzzerClick();
     }
     s_touch_last_x = lx;
     s_touch_last_y = ly;
     s_touch_last_down_ms = now;
+
+    // Held still long enough? Report a long press once, mid-contact, so the UI
+    // can react while the finger is still down.
+    if (!s_long_press_fired && now - s_touch_down_ms >= config::kWifiSetupHoldMs &&
+        std::abs(lx - s_touch_start_x) <= kTapMaxPx &&
+        std::abs(ly - s_touch_start_y) <= kTapMaxPx) {
+      s_long_press_fired = true;
+      queueLongPress();
+      hardware::buzzerClick();
+    }
   } else if (s_touch_tracking && now - s_touch_last_down_ms >= kTouchReleaseMs) {
     // Real lift-off: no point reported for kTouchReleaseMs.
     finishTouchGesture();
@@ -127,8 +155,9 @@ void inputPoll() {
 }
 
 // --- Knob / encoder: the 3.4C has no rotary encoder or knob button. ---
-// Zoom is driven by tapping the range label (already in the UI); Wi-Fi reset
-// via the web portal. These stubs keep the shared UI code paths compiling.
+// Zoom is driven by swiping left/right on the radar, and Wi-Fi setup by holding
+// the screen (see inputConsumeLongPress). These stubs keep the shared UI code
+// paths compiling.
 
 int8_t inputConsumeEncoderDelta() { return 0; }
 
@@ -168,7 +197,16 @@ void inputDiscardPendingInteractions() {
   s_swipe_pending = SwipeNone;
   s_tap_x = -1;
   s_tap_y = -1;
+  s_long_press_pending = false;
   portEXIT_CRITICAL(&s_input_mux);
+}
+
+bool inputConsumeLongPress() {
+  portENTER_CRITICAL(&s_input_mux);
+  const bool held = s_long_press_pending;
+  s_long_press_pending = false;
+  portEXIT_CRITICAL(&s_input_mux);
+  return held;
 }
 
 void inputPollLongPress() {}

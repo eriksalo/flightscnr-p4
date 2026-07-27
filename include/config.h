@@ -31,6 +31,13 @@ constexpr char kPortalHostUrl[] = "flightscnr.local";
 constexpr unsigned long kWifiConnectAttemptMs = 15000;
 constexpr uint8_t kWifiConnectAttempts = 3;
 constexpr unsigned long kWifiPortalTimeoutSec = 0;  // 0 = no timeout while configuring
+/** Hold the screen this long (ms) to open Wi-Fi setup from the radar. Long
+ *  enough that a swipe or a resting finger cannot trigger it. */
+constexpr unsigned long kWifiSetupHoldMs = 3500;
+/** On-demand portal gives up after this long and returns to the radar, so an
+ *  accidental hold cannot strand the device in AP mode (the boot-time portal
+ *  still waits indefinitely — there is nothing to return to). */
+constexpr unsigned long kWifiOnDemandPortalTimeoutSec = 300;
 constexpr unsigned long kWifiConnectingFrameMs = 50;
 /** Wait after disconnect before reconnecting (avoids portal on brief drops). */
 constexpr unsigned long kWifiDownGraceMs = 4000;
