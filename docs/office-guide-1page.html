@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FlightScnr — Office Guide (one page)</title>
+<!--
+  Single-sheet version of docs/office-guide.html, portrait 8.5 x 11, for pinning up
+  beside the device.  Render it with:
+
+      python tools/build_office_guide.py --source docs/office-guide-1page.html \
+                                         --out docs/FlightScnr-office-guide-1page.pdf
+
+  Standalone on purpose: the three-page guide is landscape and has room to breathe,
+  so the two do not share a stylesheet.
+-->
+<style>
+  @font-face {
+    font-family: 'Montserrat Bold';
+    src: url('../tools/Montserrat-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+  }
+
+  @page { size: 8.5in 11in; margin: 0; }
+
+  :root {
+    --paper:  #F6F5F1;
+    --card:   #FFFFFF;
+    --ink:    #14181C;
+    --ink-2:  #3C454E;
+    --muted:  #6B757E;
+    --rule:   #D9D6CE;
+    --scope:  #07090A;
+    --green:  #17703A;
+    --phos:   #3FE06A;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 11.5px;
+    line-height: 1.42;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    width: 8.5in;
+    height: 11in;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    flex: none;
+    background: var(--scope);
+    color: #EAF2EC;
+    padding: 15px 36px 14px;
+    border-bottom: 3px solid var(--phos);
+  }
+  header .title {
+    font-family: 'Montserrat Bold', "Segoe UI", sans-serif;
+    font-size: 25px;
+    line-height: 1.1;
+    letter-spacing: -0.3px;
+  }
+  header .title em { font-style: normal; color: var(--phos); }
+  header .sub { font-size: 11.5px; color: #93A79A; margin-top: 6px; }
+  header .sub b { color: #D6E4DA; font-weight: 600; }
+  header .repo {
+    font-size: 11px;
+    color: #D6E4DA;
+    margin-top: 4px;
+  }
+  header .repo b { color: var(--phos); font-weight: 600; }
+
+  main { flex: 1; padding: 14px 36px 0; display: flex; flex-direction: column; min-height: 0; }
+  /* Nothing in the column may shrink — a flex-shrunk SVG silently scales its whole
+     drawing down instead of clipping, which is very easy to miss. */
+  main > * { flex: none; }
+  main > .spacer { flex: 1; }
+
+  footer {
+    flex: none;
+    padding: 8px 36px 11px;
+    font-size: 9px;
+    color: var(--muted);
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+  }
+  footer b { color: var(--ink-2); font-weight: 600; }
+
+  /* ---------- shared bits ---------- */
+  .eyebrow {
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 9.5px;
+    letter-spacing: 1.9px;
+    color: var(--green);
+    margin: 0 0 7px;
+  }
+  p { margin: 0 0 8px; }
+  .small { font-size: 10px; color: var(--muted); line-height: 1.4; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 8px 11px;
+  }
+  .card h3 { margin: 0 0 3px; font-family: 'Montserrat Bold', sans-serif; font-size: 11.5px; }
+  .card p { margin: 0; font-size: 10.5px; color: var(--ink-2); line-height: 1.4; }
+  .card .gesture {
+    display: block;
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    color: var(--green);
+    margin-bottom: 3px;
+  }
+
+  /* ---------- band 1: scope + callouts ---------- */
+  .band { display: flex; gap: 22px; flex: none; }
+  .col-scope { flex: 0 0 320px; }
+  .col-read  { flex: 1; min-width: 0; }
+
+  .col-scope svg.scope { width: 320px; height: 320px; display: block; }
+  .scope-cap { font-size: 9px; color: var(--muted); text-align: center; margin: 6px 0 0; }
+
+  .callouts { list-style: none; margin: 0; padding: 0; }
+  .callouts li {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: 8px;
+    margin-bottom: 7px;
+    align-items: start;
+  }
+  .badge {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--scope);
+    color: var(--phos);
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 10px;
+    line-height: 18px;
+    text-align: center;
+  }
+  .callouts b { display: block; font-size: 11px; }
+  .callouts span { color: var(--ink-2); font-size: 10.5px; }
+  .callouts i { font-style: normal; font-weight: 600; }
+
+  /* ---------- colour legend strip ---------- */
+  .key { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: center; }
+  .key div { display: flex; align-items: center; gap: 7px; font-size: 10.5px; }
+  .chip {
+    flex: none;
+    width: 26px; height: 18px;
+    background: var(--scope);
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .chip svg { width: 15px; height: 15px; display: block; }
+
+  /* ---------- band 2: gestures ---------- */
+  .drive { display: flex; gap: 22px; align-items: flex-start; }
+  .drive .dial { flex: 0 0 232px; }
+  .drive .dial svg { width: 232px; height: 218px; display: block; }
+  .drive .cards { flex: 1; min-width: 0; display: grid; gap: 7px; }
+
+  /* ---------- band 3: the chain ---------- */
+  .flow { width: 100%; height: 92px; display: block; }
+  .cadence {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 7px;
+    padding-top: 7px;
+    border-top: 1px solid var(--rule);
+    font-size: 9.5px;
+    color: var(--ink-2);
+  }
+  .cadence b {
+    font-family: 'Montserrat Bold', sans-serif;
+    color: var(--green);
+    font-weight: 700;
+  }
+
+  hr.rule { border: none; border-top: 1px solid var(--rule); margin: 9px 0 8px; }
+
+  .notes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  .notes h4 { margin: 0 0 2px; font-family: 'Montserrat Bold', sans-serif; font-size: 10.5px; }
+  .notes p { margin: 0; font-size: 10px; color: var(--ink-2); line-height: 1.38; }
+
+  .spacer { flex: 1; min-height: 0; }
+</style>
+</head>
+<body>
+
+<section class="page">
+  <header>
+    <div class="title">FlightScnr <em>·</em> live aircraft radar</div>
+    <div class="sub">
+      Every airplane on this screen is really up there, right now, within 30 miles of this office.
+      <b>Nothing is simulated or replayed.</b>
+    </div>
+    <div class="repo">Build your own — <b>github.com/eriksalo/flightscnr-p4</b></div>
+  </header>
+
+  <main>
+
+    <!-- ============ band 1 · the scope, and how to read it ============ -->
+    <div class="band">
+      <div class="col-scope">
+        <svg class="scope" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
+          <image href="images/radar-live-30mi.png" x="0" y="0" width="720" height="720"/>
+          <g font-family="Montserrat Bold, sans-serif" font-size="29" font-weight="700" text-anchor="middle">
+            <g><circle cx="248" cy="202" r="22" fill="#07090A" stroke="#3FE06A" stroke-width="3"/><text x="248" y="213" fill="#3FE06A">1</text></g>
+            <g><circle cx="110" cy="214" r="22" fill="#07090A" stroke="#3FE06A" stroke-width="3"/><text x="110" y="225" fill="#3FE06A">2</text></g>
+            <g><circle cx="170" cy="406" r="22" fill="#07090A" stroke="#3FE06A" stroke-width="3"/><text x="170" y="417" fill="#3FE06A">3</text></g>
+            <g><circle cx="280" cy="482" r="22" fill="#07090A" stroke="#3FE06A" stroke-width="3"/><text x="280" y="493" fill="#3FE06A">4</text></g>
+            <g><circle cx="414" cy="666" r="22" fill="#07090A" stroke="#3FE06A" stroke-width="3"/><text x="414" y="677" fill="#3FE06A">5</text></g>
+            <g><circle cx="68" cy="542" r="22" fill="#07090A" stroke="#3FE06A" stroke-width="3"/><text x="68" y="553" fill="#3FE06A">6</text></g>
+          </g>
+        </svg>
+        <div class="scope-cap">
+          A real capture from the device. The centre of the circle is this building.
+        </div>
+      </div>
+
+      <div class="col-read">
+        <p class="eyebrow">WHAT'S ON THE SCREEN</p>
+        <ol class="callouts">
+          <li><div class="badge">1</div><div>
+            <b>The sweep arm</b>
+            <span>One lap every six seconds. Each airplane only moves as the beam crosses it, then
+            holds still — just as a real radar scope behaves.</span>
+          </div></li>
+          <li><div class="badge">2</div><div>
+            <b>An airplane, and its tag</b>
+            <span>The silhouette matches the real type and points the way it is flying. Beside it:
+            callsign, type, altitude in feet — <i style="color:#0E7C8C">cyan</i> level or climbing,
+            <i style="color:#B0009E">magenta</i> descending.</span>
+          </div></li>
+          <li><div class="badge">3</div><div>
+            <b>Range rings</b>
+            <span>Miles from this building. Currently 10 / 20 / 30.</span>
+          </div></li>
+          <li><div class="badge">4</div><div>
+            <b>Towns underneath</b>
+            <span>A dim map of nearby places, so the picture lines up with geography you know.</span>
+          </div></li>
+          <li><div class="badge">5</div><div>
+            <b>Compass</b>
+            <span>North is up, whatever wall it faces.</span>
+          </div></li>
+          <li><div class="badge">6</div><div>
+            <b>Marks on the rim</b>
+            <span>Traffic beyond the outer ring, parked at the edge on its correct bearing. Zoom out
+            and it comes onto the scope properly.</span>
+          </div></li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- ============ colour legend ============ -->
+    <p class="eyebrow" style="margin-top:11px">WHAT THE COLOURS MEAN — MILITARY &amp; EMERGENCY PULSE ORANGE OR RED</p>
+    <div class="key">
+      <div><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2 L13.1 9.4 L22 12.4 L22 14.2 L13.1 12.6 L13.1 18.6 L16.4 20.8 L16.4 22 L12 21 L7.6 22 L7.6 20.8 L10.9 18.6 L10.9 12.6 L2 14.2 L2 12.4 L10.9 9.4 Z" fill="#FFB428"/></svg></span> Airliners &amp; freighters</div>
+      <div><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2 L13.1 9.4 L22 12.4 L22 14.2 L13.1 12.6 L13.1 18.6 L16.4 20.8 L16.4 22 L12 21 L7.6 22 L7.6 20.8 L10.9 18.6 L10.9 12.6 L2 14.2 L2 12.4 L10.9 9.4 Z" fill="#46E1FF"/></svg></span> Private &amp; business jets</div>
+      <div><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2 L13.1 9.4 L22 12.4 L22 14.2 L13.1 12.6 L13.1 18.6 L16.4 20.8 L16.4 22 L12 21 L7.6 22 L7.6 20.8 L10.9 18.6 L10.9 12.6 L2 14.2 L2 12.4 L10.9 9.4 Z" fill="#B98CFF"/></svg></span> Propeller &amp; turboprop</div>
+      <div><span class="chip"><svg viewBox="0 0 24 24"><g stroke="#C8D2DC" stroke-width="1.7" fill="none"><path d="M4 4 L20 20 M20 4 L4 20"/><circle cx="12" cy="12" r="2.2" fill="#C8D2DC" stroke="none"/></g></svg></span> Helicopters, military, gliders</div>
+    </div>
+
+    <!-- ============ band 2 · driving it ============ -->
+    <p class="eyebrow" style="margin-top:12px">HOW TO DRIVE IT — TOUCH ONLY, NO BUTTONS AND NO KNOB</p>
+    <div class="drive">
+      <div class="dial">
+        <svg viewBox="0 0 320 300" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arw" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="#14181C"/>
+            </marker>
+          </defs>
+
+          <circle cx="160" cy="148" r="66" fill="#07090A"/>
+          <circle cx="160" cy="148" r="66" fill="none" stroke="#2B3230" stroke-width="5"/>
+          <g fill="none" stroke="#17703A" stroke-width="1.1" stroke-dasharray="3 5" opacity="0.9">
+            <circle cx="160" cy="148" r="22"/>
+            <circle cx="160" cy="148" r="43"/>
+            <circle cx="160" cy="148" r="59"/>
+            <path d="M160 89 L160 207 M101 148 L219 148"/>
+          </g>
+          <line x1="160" y1="148" x2="206" y2="111" stroke="#3FE06A" stroke-width="2"/>
+          <g font-family="Montserrat Bold, sans-serif" font-size="8" fill="#2E9A50" text-anchor="middle">
+            <text x="160" y="104">N</text><text x="160" y="199">S</text>
+            <text x="208" y="151">E</text><text x="113" y="151">W</text>
+          </g>
+          <g>
+            <path d="M186 128 l1.2 4.4 5.2 1.8 0 1.1 -5.2 -0.9 0 3.5 1.9 1.4 0 0.7 -3.1 -0.6 -3.1 0.6 0 -0.7 1.9 -1.4 0 -3.5 -5.2 0.9 0 -1.1 5.2 -1.8 z" fill="#FFB428" transform="rotate(38 186 135)"/>
+            <path d="M136 172 l1.2 4.4 5.2 1.8 0 1.1 -5.2 -0.9 0 3.5 1.9 1.4 0 0.7 -3.1 -0.6 -3.1 0.6 0 -0.7 1.9 -1.4 0 -3.5 -5.2 0.9 0 -1.1 5.2 -1.8 z" fill="#B98CFF" transform="rotate(-105 136 179)"/>
+          </g>
+
+          <path d="M160 72 L160 36" stroke="#14181C" stroke-width="2" marker-end="url(#arw)"/>
+          <g text-anchor="middle">
+            <text x="160" y="14" font-family="Montserrat Bold, sans-serif" font-size="11" fill="#14181C">SETTINGS</text>
+            <text x="160" y="26" font-size="9" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe up</text>
+          </g>
+
+          <path d="M160 224 L160 260" stroke="#14181C" stroke-width="2" marker-end="url(#arw)"/>
+          <g text-anchor="middle">
+            <text x="160" y="276" font-family="Montserrat Bold, sans-serif" font-size="11" fill="#14181C">CLOCK &amp; WEATHER</text>
+            <text x="160" y="288" font-size="9" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe down</text>
+          </g>
+
+          <path d="M86 148 L52 148" stroke="#14181C" stroke-width="2" marker-end="url(#arw)"/>
+          <g text-anchor="end">
+            <text x="46" y="140" font-family="Montserrat Bold, sans-serif" font-size="11" fill="#14181C">ZOOM</text>
+            <text x="46" y="152" font-family="Montserrat Bold, sans-serif" font-size="11" fill="#14181C">IN</text>
+            <text x="46" y="165" font-size="9" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe left</text>
+          </g>
+
+          <path d="M234 148 L268 148" stroke="#14181C" stroke-width="2" marker-end="url(#arw)"/>
+          <g text-anchor="start">
+            <text x="274" y="140" font-family="Montserrat Bold, sans-serif" font-size="11" fill="#14181C">ZOOM</text>
+            <text x="274" y="152" font-family="Montserrat Bold, sans-serif" font-size="11" fill="#14181C">OUT</text>
+            <text x="274" y="165" font-size="9" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe right</text>
+          </g>
+        </svg>
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <span class="gesture">TAP AN AIRPLANE</span>
+          <h3>Who is that?</h3>
+          <p>Callsign, airline, where it came from and where it is going, aircraft type, altitude and
+          speed. Swipe down or right to come back to the radar.</p>
+        </div>
+        <div class="card">
+          <span class="gesture">PRESS &amp; HOLD ~3½ SECONDS</span>
+          <h3>Only if the Wi-Fi changes</h3>
+          <p>Opens Wi-Fi setup so the device can be pointed at a new network. Harmless by accident —
+          it gives up after five minutes and reconnects on its own.</p>
+        </div>
+        <div class="card">
+          <span class="gesture">LAST RESORT</span>
+          <h3>Blank, frozen, or plainly sulking?</h3>
+          <p>Unplug the USB-C cable, count to five, plug it back in. Nothing is lost by restarting it,
+          and it is back within a minute.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <!-- ============ band 3 · how it works ============ -->
+    <p class="eyebrow">HOW IT WORKS — TRANSPONDER TO DESK IN A COUPLE OF SECONDS</p>
+    <svg class="flow" viewBox="0 0 744 92" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="fa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#17703A"/>
+        </marker>
+      </defs>
+
+      <!-- Five equal cards: w=130, gap=22.5, first at x=2, centres 67/219.5/372/524.5/677.
+           Icon on top with the text centred beneath, so each title gets the full card
+           width — an icon-left/text-right layout leaves too little and the longer titles
+           spill out of the box. -->
+
+      <!-- 1 · the airplane -->
+      <rect x="2" y="1" width="130" height="86" rx="6" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(67 24)">
+        <path d="M0 -12 l1.7 7.8 9.3 3.2 0 2 -9.3 -1.7 0 6.3 3.4 2.4 0 1.4 -5.1 -1 -5.1 1 0 -1.4 3.4 -2.4 0 -6.3 -9.3 1.7 0 -2 9.3 -3.2 z" fill="#FFB428"/>
+        <g stroke="#17703A" stroke-width="1.3" fill="none" opacity="0.85">
+          <path d="M-9 9 a 13 13 0 0 0 18 0"/>
+          <path d="M-15 15 a 21 21 0 0 0 30 0"/>
+        </g>
+      </g>
+      <g text-anchor="middle">
+        <text x="67" y="55" font-family="Montserrat Bold, sans-serif" font-size="10" fill="#14181C">THE AIRPLANE</text>
+        <g font-size="8.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+          <text x="67" y="68">broadcasts its ID,</text>
+          <text x="67" y="79">position and altitude</text>
+        </g>
+      </g>
+      <path d="M137 44 L150 44" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 2 · receivers -->
+      <rect x="154.5" y="1" width="130" height="86" rx="6" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(219.5 26)" stroke="#14181C" stroke-width="1.6" fill="none">
+        <path d="M-16 10 L-16 -6 M0 10 L0 -11 M16 10 L16 -4"/>
+        <path d="M-21 10 L-11 10 M-5 10 L5 10 M11 10 L21 10"/>
+        <g stroke="#17703A" stroke-width="1.2"><path d="M-20 -8 L-12 -8 M-4 -13 L4 -13 M12 -6 L20 -6"/></g>
+      </g>
+      <g text-anchor="middle">
+        <text x="219.5" y="55" font-family="Montserrat Bold, sans-serif" font-size="10" fill="#14181C">HOBBYIST AERIALS</text>
+        <g font-size="8.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+          <text x="219.5" y="68">volunteers catch it —</text>
+          <text x="219.5" y="79">Erik runs one of them</text>
+        </g>
+      </g>
+      <path d="M289.5 44 L302.5 44" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 3 · aggregator -->
+      <rect x="307" y="1" width="130" height="86" rx="6" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(372 26)" fill="none" stroke="#14181C" stroke-width="1.6">
+        <circle cx="0" cy="0" r="14"/>
+        <ellipse cx="0" cy="0" rx="14" ry="5.5"/>
+        <path d="M0 -14 a 9 14 0 0 0 0 28 a 9 14 0 0 0 0 -28"/>
+      </g>
+      <g text-anchor="middle">
+        <text x="372" y="55" font-family="Montserrat Bold, sans-serif" font-size="10" fill="#14181C">adsb.fi</text>
+        <g font-size="8.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+          <text x="372" y="68">a free community feed</text>
+          <text x="372" y="79">pools every receiver</text>
+        </g>
+      </g>
+      <path d="M442 44 L455 44" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 4 · wifi -->
+      <rect x="459.5" y="1" width="130" height="86" rx="6" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(524.5 28)" fill="none" stroke="#14181C" stroke-width="1.8" stroke-linecap="round">
+        <path d="M-15 -4 a 21 21 0 0 1 30 0"/>
+        <path d="M-9 3 a 12.5 12.5 0 0 1 18 0"/>
+        <circle cx="0" cy="10" r="2.2" fill="#14181C" stroke="none"/>
+      </g>
+      <g text-anchor="middle">
+        <text x="524.5" y="55" font-family="Montserrat Bold, sans-serif" font-size="10" fill="#14181C">OFFICE WI-FI</text>
+        <g font-size="8.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+          <text x="524.5" y="68">the device asks for the</text>
+          <text x="524.5" y="79">list every ~2 seconds</text>
+        </g>
+      </g>
+      <path d="M594.5 44 L607.5 44" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 5 · the device -->
+      <rect x="612" y="1" width="130" height="86" rx="6" fill="#07090A"/>
+      <circle cx="677" cy="25" r="17" fill="#0B0F0C" stroke="#2B3230" stroke-width="2.2"/>
+      <g fill="none" stroke="#17703A" stroke-width="0.9" stroke-dasharray="2.5 3.5">
+        <circle cx="677" cy="25" r="6"/><circle cx="677" cy="25" r="11"/><circle cx="677" cy="25" r="15"/>
+      </g>
+      <line x1="677" y1="25" x2="689" y2="14" stroke="#3FE06A" stroke-width="1.6"/>
+      <g text-anchor="middle">
+        <text x="677" y="55" font-family="Montserrat Bold, sans-serif" font-size="10" fill="#EAF2EC">THIS DEVICE</text>
+        <g font-size="8.5" fill="#93A79A" font-family="Segoe UI, sans-serif">
+          <text x="677" y="68">works out its bearing</text>
+          <text x="677" y="79">and distance from here</text>
+        </g>
+      </g>
+    </svg>
+
+    <div class="cadence">
+      <span><b>NEW DATA</b> every ~2 s</span>
+      <span><b>SWEEP</b> one lap per 6 s</span>
+      <span><b>SCREEN</b> ~30 frames per second</span>
+      <span><b>CAPACITY</b> 64 aircraft, nearest first</span>
+      <span><b>SETTINGS</b> http://flightscnr.local/</span>
+    </div>
+
+    <hr class="rule">
+
+    <div class="notes">
+      <div>
+        <h4>Why does it sweep like that?</h4>
+        <p>It knows where everything is, but withholds each update until the arm reaches that
+        bearing.</p>
+      </div>
+      <div>
+        <h4>It went to the clock by itself</h4>
+        <p>The sky is empty. It returns when traffic appears. Screens also drift back after ten
+        seconds.</p>
+      </div>
+      <div>
+        <h4>Why is that airplane so low?</h4>
+        <p>Altitude is above sea level. The ground here is already ~5,000 ft, so a light airplane
+        reads 6,000-something.</p>
+      </div>
+      <div>
+        <h4>Is it watching us?</h4>
+        <p>No camera, no microphone — just a public list of aircraft positions. Please leave it
+        plugged in.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div>
+      <b>Radar centre</b> 40.130&deg;&nbsp;N, 105.177&deg;&nbsp;W · <b>Range</b> 30&nbsp;mi ·
+      ESP32-P4, 3.4″ round 720&nbsp;&times;&nbsp;720 touch
+    </div>
+    <div>
+      <b>github.com/eriksalo/flightscnr-p4</b> · FlightScnr by yashmulgaonkar · CC BY-NC-SA 4.0
+    </div>
+  </footer>
+</section>
+
+</body>
+</html>

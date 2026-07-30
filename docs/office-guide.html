@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FlightScnr — Office Guide</title>
+<!--
+  Source for docs/FlightScnr-office-guide.pdf — a three-page landscape explainer
+  to sit beside the device.  Render it with:
+
+      python tools/build_office_guide.py
+
+  which inlines ../tools/Montserrat-Bold.ttf and images/*.png as data URIs and
+  drives headless Chrome.  Opening this file directly in a browser also works,
+  minus the embedded font.
+-->
+<style>
+  @font-face {
+    font-family: 'Montserrat Bold';
+    src: url('../tools/Montserrat-Bold.ttf') format('truetype');
+    font-weight: 700;
+    font-style: normal;
+  }
+
+  @page { size: 11in 8.5in; margin: 0; }
+
+  :root {
+    --paper:   #F6F5F1;
+    --card:    #FFFFFF;
+    --ink:     #14181C;
+    --ink-2:   #3C454E;
+    --muted:   #6B757E;
+    --rule:    #D9D6CE;
+    --hair:    #ECEAE4;
+    --scope:   #07090A;
+    --green:   #17703A;
+    --phos:    #3FE06A;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.45;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  h1, h2, h3, .display { font-family: 'Montserrat Bold', "Segoe UI", sans-serif; font-weight: 700; }
+
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    background: var(--paper);
+    page-break-after: always;
+    break-after: page;
+    display: flex;
+    flex-direction: column;
+  }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+
+  /* ---------- header / footer ---------- */
+  header {
+    background: var(--scope);
+    color: #EAF2EC;
+    padding: 19px 46px 17px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 3px solid var(--phos);
+    flex: none;
+  }
+  header .title {
+    font-family: 'Montserrat Bold', "Segoe UI", sans-serif;
+    font-size: 25px;
+    letter-spacing: -0.3px;
+    line-height: 1.1;
+  }
+  header .title em { font-style: normal; color: var(--phos); }
+  header .sub { font-size: 12.5px; color: #93A79A; margin-top: 6px; letter-spacing: 0.2px; }
+  header .step {
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 2.2px;
+    color: var(--phos);
+    text-align: right;
+    padding-bottom: 3px;
+    white-space: nowrap;
+  }
+  header .step span { display: block; color: #6E8375; letter-spacing: 1.5px; margin-top: 4px; }
+
+  main { flex: 1; padding: 24px 46px 0; display: flex; gap: 34px; min-height: 0; }
+
+  footer {
+    flex: none;
+    padding: 10px 46px 13px;
+    font-size: 9.5px;
+    color: var(--muted);
+    border-top: 1px solid var(--rule);
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+  }
+  footer b { color: var(--ink-2); font-weight: 600; }
+
+  /* ---------- type helpers ---------- */
+  .eyebrow {
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 10.5px;
+    letter-spacing: 2.1px;
+    color: var(--green);
+    margin: 0 0 9px;
+  }
+  .lede { font-size: 14.5px; line-height: 1.52; color: var(--ink-2); margin: 0 0 17px; }
+  .lede strong { color: var(--ink); }
+  p { margin: 0 0 10px; }
+  .small { font-size: 11.5px; color: var(--muted); line-height: 1.42; }
+
+  /* ---------- page 1 ---------- */
+  .scope-wrap { flex: 0 0 470px; display: flex; flex-direction: column; }
+  .scope-wrap svg.scope { width: 470px; height: 470px; display: block; }
+  .scope-cap {
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    margin: 9px 0 20px;
+    line-height: 1.4;
+  }
+
+  .callouts { list-style: none; margin: 0; padding: 0; }
+  .callouts li {
+    display: grid;
+    grid-template-columns: 26px 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+    align-items: start;
+  }
+  .badge {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--scope);
+    color: var(--phos);
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 12px;
+    line-height: 22px;
+    text-align: center;
+    margin-top: 1px;
+  }
+  .callouts b { display: block; font-size: 13px; }
+  .callouts span { color: var(--ink-2); font-size: 12.5px; }
+  .callouts i { font-style: normal; font-weight: 600; }
+
+  .key { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+  .key div { display: flex; align-items: center; gap: 9px; font-size: 12px; }
+  .chip {
+    flex: none;
+    width: 30px; height: 21px;
+    background: var(--scope);
+    border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .chip svg { width: 18px; height: 18px; display: block; }
+
+  /* ---------- cards ---------- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: 7px;
+    padding: 13px 15px;
+  }
+  .card h3 { margin: 0 0 6px; font-size: 13px; }
+  .card p { margin: 0; font-size: 12px; color: var(--ink-2); line-height: 1.45; }
+  .card .gesture {
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 10px;
+    letter-spacing: 1.7px;
+    color: var(--green);
+    display: block;
+    margin-bottom: 5px;
+  }
+
+  /* ---------- tables ---------- */
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th {
+    text-align: left;
+    font-family: 'Montserrat Bold', sans-serif;
+    font-size: 9.5px;
+    letter-spacing: 1.3px;
+    color: var(--muted);
+    padding: 0 8px 5px 0;
+    border-bottom: 1px solid var(--rule);
+    font-weight: 700;
+  }
+  td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--hair); color: var(--ink-2); }
+  tr:last-child td { border-bottom: none; }
+  td.k { color: var(--ink); font-weight: 600; white-space: nowrap; }
+
+  .screens { list-style: none; margin: 0; padding: 0; }
+  .screens li { padding: 6px 0; border-bottom: 1px solid var(--hair); font-size: 12.5px; color: var(--ink-2); }
+  .screens li:last-child { border-bottom: none; }
+  .screens b { color: var(--ink); }
+
+  /* ---------- page 3 ---------- */
+  .flow { width: 100%; height: 178px; display: block; }
+  .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; }
+  .cols3 h3 { margin: 0 0 8px; font-size: 13.5px; }
+  .cols3 p { font-size: 12px; color: var(--ink-2); line-height: 1.48; }
+  .spec { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12px; margin: 0; }
+  .spec dt { color: var(--muted); white-space: nowrap; }
+  .spec dd { margin: 0; color: var(--ink); }
+  .faq { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 22px; margin-bottom: 6px; }
+  .faq h4 { margin: 0 0 4px; font-size: 12.5px; font-family: 'Montserrat Bold', sans-serif; }
+  .faq p { margin: 0; font-size: 11.5px; color: var(--ink-2); line-height: 1.45; }
+  .rule { border: none; border-top: 1px solid var(--rule); margin: 16px 0; }
+  /* park the closing Q&A band on the footer rather than leaving a hole below it */
+  .rule.settle { margin-top: auto; }
+</style>
+</head>
+<body>
+
+<!-- ======================= PAGE 1 · WHAT IT IS ======================= -->
+<section class="page">
+  <header>
+    <div>
+      <div class="title">FlightScnr <em>·</em> live aircraft radar</div>
+      <div class="sub">Everything on this screen is a real airplane, in the sky above us, right now.</div>
+    </div>
+    <div class="step">WHAT YOU'RE LOOKING AT<span>PAGE 1 OF 3</span></div>
+  </header>
+
+  <main>
+    <div class="scope-wrap">
+      <svg class="scope" viewBox="0 0 720 720" xmlns="http://www.w3.org/2000/svg">
+        <image href="images/radar-live-30mi.png" x="0" y="0" width="720" height="720"/>
+        <g font-family="Montserrat Bold, sans-serif" font-size="25" font-weight="700" text-anchor="middle">
+          <g><circle cx="248" cy="202" r="19" fill="#07090A" stroke="#3FE06A" stroke-width="2.5"/><text x="248" y="211" fill="#3FE06A">1</text></g>
+          <g><circle cx="112" cy="214" r="19" fill="#07090A" stroke="#3FE06A" stroke-width="2.5"/><text x="112" y="223" fill="#3FE06A">2</text></g>
+          <g><circle cx="172" cy="408" r="19" fill="#07090A" stroke="#3FE06A" stroke-width="2.5"/><text x="172" y="417" fill="#3FE06A">3</text></g>
+          <g><circle cx="280" cy="482" r="19" fill="#07090A" stroke="#3FE06A" stroke-width="2.5"/><text x="280" y="491" fill="#3FE06A">4</text></g>
+          <g><circle cx="414" cy="666" r="19" fill="#07090A" stroke="#3FE06A" stroke-width="2.5"/><text x="414" y="675" fill="#3FE06A">5</text></g>
+          <g><circle cx="70" cy="542" r="19" fill="#07090A" stroke="#3FE06A" stroke-width="2.5"/><text x="70" y="551" fill="#3FE06A">6</text></g>
+        </g>
+      </svg>
+      <div class="scope-cap">
+        An actual capture from the device &mdash; 720&nbsp;&times;&nbsp;720 pixels of real traffic at
+        30&nbsp;mile range. The centre of the circle is this building.
+      </div>
+
+      <p class="eyebrow">WHAT THE COLOURS MEAN</p>
+      <div class="key">
+        <div><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2 L13.1 9.4 L22 12.4 L22 14.2 L13.1 12.6 L13.1 18.6 L16.4 20.8 L16.4 22 L12 21 L7.6 22 L7.6 20.8 L10.9 18.6 L10.9 12.6 L2 14.2 L2 12.4 L10.9 9.4 Z" fill="#FFB428"/></svg></span> Airliners &amp; freighters</div>
+        <div><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2 L13.1 9.4 L22 12.4 L22 14.2 L13.1 12.6 L13.1 18.6 L16.4 20.8 L16.4 22 L12 21 L7.6 22 L7.6 20.8 L10.9 18.6 L10.9 12.6 L2 14.2 L2 12.4 L10.9 9.4 Z" fill="#46E1FF"/></svg></span> Private &amp; business jets</div>
+        <div><span class="chip"><svg viewBox="0 0 24 24"><path d="M12 2 L13.1 9.4 L22 12.4 L22 14.2 L13.1 12.6 L13.1 18.6 L16.4 20.8 L16.4 22 L12 21 L7.6 22 L7.6 20.8 L10.9 18.6 L10.9 12.6 L2 14.2 L2 12.4 L10.9 9.4 Z" fill="#B98CFF"/></svg></span> Propeller &amp; turboprop</div>
+        <div><span class="chip"><svg viewBox="0 0 24 24"><g stroke="#C8D2DC" stroke-width="1.7" fill="none"><path d="M4 4 L20 20 M20 4 L4 20"/><circle cx="12" cy="12" r="2.2" fill="#C8D2DC" stroke="none"/></g></svg></span> Helicopters, military, gliders</div>
+      </div>
+      <p class="small" style="margin:11px 0 0">
+        Military and emergency traffic overrides these colours and <b style="color:var(--ink)">pulses
+        orange or red</b> instead.
+      </p>
+    </div>
+
+    <div style="flex:1; min-width:0;">
+      <p class="eyebrow">THE SHORT VERSION</p>
+      <p class="lede">
+        Aircraft constantly broadcast who and where they are. This round screen listens for those
+        broadcasts, works out where each airplane sits relative to <strong>this office</strong>, and
+        paints it on a radar scope. <strong>Nothing here is simulated or replayed</strong> &mdash; if a
+        plane is on the glass, it is overhead.
+      </p>
+
+      <p class="eyebrow">THE SIX THINGS ON SCREEN</p>
+      <ol class="callouts">
+        <li><div class="badge">1</div><div>
+          <b>The sweep arm</b>
+          <span>Rotates once every six seconds. Each aircraft only moves when the beam passes it, then
+          holds still until the next lap &mdash; exactly how a real radar scope behaves.</span>
+        </div></li>
+        <li><div class="badge">2</div><div>
+          <b>An aircraft, and its tag</b>
+          <span>The silhouette matches the real aircraft type and is turned to its actual heading.
+          Beside it: callsign, type code and altitude in feet &mdash;
+          <i style="color:#0E7C8C">cyan</i> if level or climbing,
+          <i style="color:#B0009E">magenta</i> if descending.</span>
+        </div></li>
+        <li><div class="badge">3</div><div>
+          <b>Range rings</b>
+          <span>Distance from this building, in miles. Currently 10 / 20 / 30 &mdash; swipe to change.</span>
+        </div></li>
+        <li><div class="badge">4</div><div>
+          <b>Towns underneath</b>
+          <span>A dim map of nearby places, so the picture lines up with the geography you know.</span>
+        </div></li>
+        <li><div class="badge">5</div><div>
+          <b>Compass</b>
+          <span>North is up. The scope is oriented to true north, not to the wall it hangs on.</span>
+        </div></li>
+        <li><div class="badge">6</div><div>
+          <b>Marks on the rim</b>
+          <span>Traffic further out than the outer ring, parked at the edge on its correct bearing.
+          Zoom out and it comes onto the scope properly.</span>
+        </div></li>
+      </ol>
+    </div>
+  </main>
+
+  <footer>
+    <div><b>Radar centre</b> 40.130&deg;&nbsp;N, 105.177&deg;&nbsp;W &nbsp;·&nbsp; <b>Range</b> 30&nbsp;mi &nbsp;·&nbsp; <b>Tracks</b> up to 64 aircraft at once</div>
+    <div>Go on, touch it &mdash; you cannot break it. See page&nbsp;2.</div>
+  </footer>
+</section>
+
+<!-- ======================= PAGE 2 · HOW TO USE IT ======================= -->
+<section class="page">
+  <header>
+    <div>
+      <div class="title">How to <em>drive</em> it</div>
+      <div class="sub">Touch only &mdash; there are no buttons and no knob. Six gestures do everything.</div>
+    </div>
+    <div class="step">HOW TO USE IT<span>PAGE 2 OF 3</span></div>
+  </header>
+
+  <main>
+    <div style="flex:0 0 560px; display:flex; flex-direction:column;">
+      <svg viewBox="0 0 640 452" xmlns="http://www.w3.org/2000/svg" style="width:560px;display:block">
+        <defs>
+          <marker id="arw" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#14181C"/>
+          </marker>
+        </defs>
+
+        <!-- the round screen -->
+        <circle cx="320" cy="226" r="120" fill="#07090A"/>
+        <circle cx="320" cy="226" r="120" fill="none" stroke="#2B3230" stroke-width="7"/>
+        <g fill="none" stroke="#17703A" stroke-width="1.4" stroke-dasharray="4 6" opacity="0.85">
+          <circle cx="320" cy="226" r="38"/>
+          <circle cx="320" cy="226" r="74"/>
+          <circle cx="320" cy="226" r="108"/>
+          <path d="M320 118 L320 334 M212 226 L428 226"/>
+        </g>
+        <line x1="320" y1="226" x2="404" y2="158" stroke="#3FE06A" stroke-width="2.4"/>
+        <g font-family="Montserrat Bold, sans-serif" font-size="12" fill="#2E9A50" text-anchor="middle">
+          <text x="320" y="140">N</text><text x="320" y="320">S</text>
+          <text x="410" y="231">E</text><text x="230" y="231">W</text>
+        </g>
+        <g>
+          <path d="M366 186 l1.4 5.2 6.2 2.1 0 1.3 -6.2 -1.1 0 4.2 2.3 1.6 0 0.9 -3.7 -0.7 -3.7 0.7 0 -0.9 2.3 -1.6 0 -4.2 -6.2 1.1 0 -1.3 6.2 -2.1 z" fill="#FFB428" transform="rotate(38 366 194)"/>
+          <path d="M280 268 l1.4 5.2 6.2 2.1 0 1.3 -6.2 -1.1 0 4.2 2.3 1.6 0 0.9 -3.7 -0.7 -3.7 0.7 0 -0.9 2.3 -1.6 0 -4.2 -6.2 1.1 0 -1.3 6.2 -2.1 z" fill="#46E1FF" transform="rotate(-105 280 276)"/>
+          <path d="M356 288 l1.4 5.2 6.2 2.1 0 1.3 -6.2 -1.1 0 4.2 2.3 1.6 0 0.9 -3.7 -0.7 -3.7 0.7 0 -0.9 2.3 -1.6 0 -4.2 -6.2 1.1 0 -1.3 6.2 -2.1 z" fill="#B98CFF" transform="rotate(160 356 296)"/>
+        </g>
+
+        <!-- UP -->
+        <path d="M320 90 L320 40" stroke="#14181C" stroke-width="2.4" marker-end="url(#arw)"/>
+        <g text-anchor="middle">
+          <text x="320" y="22" font-family="Montserrat Bold, sans-serif" font-size="15" fill="#14181C">SETTINGS</text>
+          <text x="320" y="37" font-size="11.5" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe up</text>
+        </g>
+
+        <!-- DOWN -->
+        <path d="M320 362 L320 412" stroke="#14181C" stroke-width="2.4" marker-end="url(#arw)"/>
+        <g text-anchor="middle">
+          <text x="320" y="431" font-family="Montserrat Bold, sans-serif" font-size="15" fill="#14181C">CLOCK &amp; WEATHER</text>
+          <text x="320" y="446" font-size="11.5" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe down</text>
+        </g>
+
+        <!-- LEFT -->
+        <path d="M184 226 L96 226" stroke="#14181C" stroke-width="2.4" marker-end="url(#arw)"/>
+        <g text-anchor="end">
+          <text x="88" y="215" font-family="Montserrat Bold, sans-serif" font-size="15" fill="#14181C">ZOOM IN</text>
+          <text x="88" y="232" font-size="11.5" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe left</text>
+          <text x="88" y="247" font-size="11.5" fill="#6B757E" font-family="Segoe UI, sans-serif">closer, less sky</text>
+        </g>
+
+        <!-- RIGHT -->
+        <path d="M456 226 L544 226" stroke="#14181C" stroke-width="2.4" marker-end="url(#arw)"/>
+        <g text-anchor="start">
+          <text x="552" y="215" font-family="Montserrat Bold, sans-serif" font-size="15" fill="#14181C">ZOOM OUT</text>
+          <text x="552" y="232" font-size="11.5" fill="#6B757E" font-family="Segoe UI, sans-serif">swipe right</text>
+          <text x="552" y="247" font-size="11.5" fill="#6B757E" font-family="Segoe UI, sans-serif">wider, more sky</text>
+        </g>
+
+        <!-- tap -->
+        <g>
+          <circle cx="366" cy="194" r="19" fill="none" stroke="#3FE06A" stroke-width="1.6" opacity="0.8"/>
+          <path d="M382 179 L430 138" stroke="#14181C" stroke-width="1.4"/>
+          <text x="435" y="134" font-family="Montserrat Bold, sans-serif" font-size="13" fill="#14181C">TAP</text>
+          <text x="435" y="148" font-size="11" fill="#6B757E" font-family="Segoe UI, sans-serif">any aircraft</text>
+        </g>
+      </svg>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:13px; margin-top:4px;">
+        <div class="card">
+          <span class="gesture">TAP AN AIRCRAFT</span>
+          <h3>Who is that?</h3>
+          <p>Opens the flight-detail card: callsign, airline name and logo, where it came from and
+          where it is going, aircraft type, altitude and speed. Swipe down or right to go back.</p>
+        </div>
+        <div class="card">
+          <span class="gesture">PRESS &amp; HOLD ~3½ SECONDS</span>
+          <h3>Only if the Wi-Fi changes</h3>
+          <p>Puts the device into Wi-Fi setup so it can be pointed at a new network. Harmless by
+          accident &mdash; it gives up after five minutes and reconnects on its own.</p>
+        </div>
+        <div class="card" style="grid-column:1 / -1">
+          <span class="gesture">LAST RESORT</span>
+          <h3>Blank, frozen, or plainly sulking?</h3>
+          <p>Unplug the USB-C cable, count to five, plug it back in. It finds the Wi-Fi and rebuilds
+          the picture within a minute or so, and no settings are lost by restarting it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1; min-width:0;">
+      <p class="eyebrow">THE FIVE SCREENS</p>
+      <ul class="screens">
+        <li><b>Radar</b> &mdash; home. Everything comes back here on its own.</li>
+        <li><b>Clock &amp; weather</b> &mdash; time, date, current conditions, sunrise and sunset.</li>
+        <li><b>Forecast</b> &mdash; three days out. From the clock, swipe right.</li>
+        <li><b>Flight detail</b> &mdash; one aircraft, in full. Tap a blip.</li>
+        <li><b>Settings &amp; about</b> &mdash; range, units, colours, brightness. Swipe up.</li>
+      </ul>
+
+      <p class="eyebrow" style="margin-top:19px">HOW FAR IT CAN SEE</p>
+      <table>
+        <tr><th>Range</th><th>Rings</th><th>Good for</th></tr>
+        <tr><td class="k">5 mi</td><td>2 / 3 / 5</td><td>Only what is nearly overhead</td></tr>
+        <tr><td class="k">10 mi</td><td>3 / 7 / 10</td><td>Local circuits and approaches</td></tr>
+        <tr><td class="k">20 mi</td><td>7 / 13 / 20</td><td>A comfortable everyday picture</td></tr>
+        <tr><td class="k">30 mi</td><td>10 / 20 / 30</td><td>The whole metro &mdash; current setting</td></tr>
+      </table>
+      <p class="small" style="margin-top:8px">
+        Swipe left to come in, right to go out. It stops at both ends rather than wrapping around.
+      </p>
+
+      <div class="card" style="margin-top:19px">
+        <h3>Three things that look like faults but aren't</h3>
+        <table style="margin-top:7px">
+          <tr>
+            <td class="k" style="width:148px">It went to the clock</td>
+            <td>The sky is empty. It returns to the radar the moment traffic shows up.</td>
+          </tr>
+          <tr>
+            <td class="k">It left my screen</td>
+            <td>Every screen drifts back to the radar after about ten seconds untouched.</td>
+          </tr>
+          <tr>
+            <td class="k">A plane sat still</td>
+            <td>It is waiting for the sweep arm. Give it up to six seconds.</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div><b>No knob, no buttons.</b> Swipe up · down · left · right, tap, or hold. That is the whole interface.</div>
+    <div>Settings can also be changed from a browser &mdash; see page&nbsp;3.</div>
+  </footer>
+</section>
+
+<!-- ======================= PAGE 3 · HOW IT WORKS ======================= -->
+<section class="page">
+  <header>
+    <div>
+      <div class="title">How it <em>actually</em> works</div>
+      <div class="sub">From an airplane's radio transmitter to this desk, in a couple of seconds.</div>
+    </div>
+    <div class="step">HOW IT WORKS<span>PAGE 3 OF 3</span></div>
+  </header>
+
+  <main style="flex-direction:column; gap:0;">
+    <svg class="flow" viewBox="0 0 1000 172" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="fa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="#17703A"/>
+        </marker>
+      </defs>
+
+      <!-- 1 · the airplane -->
+      <rect x="6" y="6" width="176" height="118" rx="7" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(94 40)">
+        <path d="M0 -15 l2.1 9.8 11.7 4 0 2.4 -11.7 -2.1 0 7.9 4.3 3 0 1.7 -6.4 -1.3 -6.4 1.3 0 -1.7 4.3 -3 0 -7.9 -11.7 2.1 0 -2.4 11.7 -4 z" fill="#FFB428"/>
+        <g stroke="#17703A" stroke-width="1.5" fill="none" opacity="0.85">
+          <path d="M-12 12 a 17 17 0 0 0 24 0"/>
+          <path d="M-19 19 a 26 26 0 0 0 38 0"/>
+        </g>
+      </g>
+      <text x="94" y="82" text-anchor="middle" font-family="Montserrat Bold, sans-serif" font-size="12.5" fill="#14181C">THE AIRPLANE</text>
+      <g text-anchor="middle" font-size="10.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+        <text x="94" y="98">broadcasts its ID,</text>
+        <text x="94" y="111">position and altitude</text>
+      </g>
+      <path d="M188 65 L212 65" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 2 · receivers -->
+      <rect x="218" y="6" width="176" height="118" rx="7" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(306 42)" stroke="#14181C" stroke-width="1.8" fill="none">
+        <path d="M-21 13 L-21 -8 M0 13 L0 -14 M21 13 L21 -6"/>
+        <path d="M-27 13 L-15 13 M-6 13 L6 13 M15 13 L27 13"/>
+        <g stroke="#17703A" stroke-width="1.4"><path d="M-25 -10 L-17 -10 M-4 -16 L4 -16 M17 -8 L25 -8"/></g>
+      </g>
+      <text x="306" y="82" text-anchor="middle" font-family="Montserrat Bold, sans-serif" font-size="12.5" fill="#14181C">HOBBYIST AERIALS</text>
+      <g text-anchor="middle" font-size="10.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+        <text x="306" y="98">volunteers catch it and</text>
+        <text x="306" y="111">relay it — Erik runs one</text>
+      </g>
+      <path d="M400 65 L424 65" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 3 · aggregator -->
+      <rect x="430" y="6" width="176" height="118" rx="7" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(518 42)" fill="none" stroke="#14181C" stroke-width="1.8">
+        <circle cx="0" cy="0" r="18"/>
+        <ellipse cx="0" cy="0" rx="18" ry="7"/>
+        <path d="M0 -18 a 11.5 18 0 0 0 0 36 a 11.5 18 0 0 0 0 -36"/>
+      </g>
+      <text x="518" y="82" text-anchor="middle" font-family="Montserrat Bold, sans-serif" font-size="12.5" fill="#14181C">adsb.fi</text>
+      <g text-anchor="middle" font-size="10.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+        <text x="518" y="98">a free community feed</text>
+        <text x="518" y="111">pools every receiver</text>
+      </g>
+      <path d="M612 65 L636 65" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 4 · wifi -->
+      <rect x="642" y="6" width="176" height="118" rx="7" fill="#FFFFFF" stroke="#D9D6CE"/>
+      <g transform="translate(730 44)" fill="none" stroke="#14181C" stroke-width="2" stroke-linecap="round">
+        <path d="M-19 -6 a 27 27 0 0 1 38 0"/>
+        <path d="M-11.5 3 a 16 16 0 0 1 23 0"/>
+        <circle cx="0" cy="11" r="2.6" fill="#14181C" stroke="none"/>
+      </g>
+      <text x="730" y="82" text-anchor="middle" font-family="Montserrat Bold, sans-serif" font-size="12.5" fill="#14181C">OFFICE WI-FI</text>
+      <g text-anchor="middle" font-size="10.5" fill="#6B757E" font-family="Segoe UI, sans-serif">
+        <text x="730" y="98">the device asks for the</text>
+        <text x="730" y="111">list every ~2 seconds</text>
+      </g>
+      <path d="M824 65 L848 65" stroke="#17703A" stroke-width="2" marker-end="url(#fa)"/>
+
+      <!-- 5 · the device -->
+      <rect x="854" y="6" width="140" height="118" rx="7" fill="#07090A"/>
+      <circle cx="924" cy="42" r="27" fill="#0B0F0C" stroke="#2B3230" stroke-width="3"/>
+      <g fill="none" stroke="#17703A" stroke-width="1" stroke-dasharray="3 4">
+        <circle cx="924" cy="42" r="9"/><circle cx="924" cy="42" r="18"/><circle cx="924" cy="42" r="24"/>
+      </g>
+      <line x1="924" y1="42" x2="943" y2="25" stroke="#3FE06A" stroke-width="1.8"/>
+      <text x="924" y="82" text-anchor="middle" font-family="Montserrat Bold, sans-serif" font-size="12.5" fill="#EAF2EC">THIS DEVICE</text>
+      <g text-anchor="middle" font-size="10.5" fill="#93A79A" font-family="Segoe UI, sans-serif">
+        <text x="924" y="98">turns each position into</text>
+        <text x="924" y="111">a bearing and a distance</text>
+      </g>
+
+      <!-- cadence strip -->
+      <line x1="6" y1="144" x2="994" y2="144" stroke="#D9D6CE"/>
+      <g font-size="11" fill="#3C454E" font-family="Segoe UI, sans-serif">
+        <text x="6" y="164"><tspan font-family="Montserrat Bold, sans-serif" fill="#17703A">NEW DATA</tspan> every ~2 s</text>
+        <text x="182" y="164"><tspan font-family="Montserrat Bold, sans-serif" fill="#17703A">SWEEP</tspan> one lap per 6 s</text>
+        <text x="380" y="164"><tspan font-family="Montserrat Bold, sans-serif" fill="#17703A">SCREEN</tspan> ~30 frames per second</text>
+        <text x="626" y="164"><tspan font-family="Montserrat Bold, sans-serif" fill="#17703A">CAPACITY</tspan> 64 aircraft, nearest first</text>
+        <text x="876" y="164"><tspan font-family="Montserrat Bold, sans-serif" fill="#17703A">LAG</tspan> a few seconds</text>
+      </g>
+    </svg>
+
+    <hr class="rule">
+
+    <div class="cols3">
+      <div>
+        <h3>Why does it sweep like that?</h3>
+        <p>
+          A real radar has a physical dish that can only look one way at a time, so its display
+          refreshes a target only when the beam comes round to it. This device already knows where
+          everything is &mdash; it withholds the update deliberately, and repaints each aircraft as
+          the arm crosses its bearing. That is the whole illusion, and it is why a blip can sit
+          motionless for a moment and then jump.
+        </p>
+        <p class="small">
+          The honest limitation: this is not really a radar. It cannot see anything that isn't
+          voluntarily broadcasting &mdash; notably some military aircraft, and light aircraft old
+          enough to carry no transponder.
+        </p>
+      </div>
+      <div>
+        <h3>What's inside</h3>
+        <dl class="spec">
+          <dt>Brain</dt><dd>Espressif ESP32-P4, dual-core RISC-V</dd>
+          <dt>Memory</dt><dd>32 MB flash · 32 MB PSRAM</dd>
+          <dt>Screen</dt><dd>3.4″ round, 720 × 720, capacitive touch</dd>
+          <dt>Radio</dt><dd>ESP32-C6 Wi-Fi 6 co-processor</dd>
+          <dt>Power</dt><dd>USB-C — the only cable it has</dd>
+          <dt>Software</dt><dd>Purpose-built firmware, no operating system</dd>
+        </dl>
+        <p class="small" style="margin-top:11px">
+          It carries its own aircraft-type database, airport list and town map in flash, so the
+          silhouettes and place names need no internet at all. Only live traffic, weather and route
+          lookups go out to the network.
+        </p>
+      </div>
+      <div>
+        <h3>Adjusting it</h3>
+        <p>
+          Everything on the device can also be set from a browser on the same Wi-Fi at
+          <b>http://flightscnr.local/</b> &mdash; range, units, accent colour, brightness, night
+          dimming, a watch list for particular callsigns, and the alert rules. Changes apply straight
+          away, without a reboot.
+        </p>
+        <p class="small">
+          A quieter option lives in there too: it can be pointed at a local ADS-B receiver on the LAN
+          instead of the internet feed, in which case an aerial on the roof is the only source and
+          nothing leaves the building.
+        </p>
+      </div>
+    </div>
+
+    <hr class="rule settle">
+
+    <div class="faq">
+      <div>
+        <h4>Is it watching us?</h4>
+        <p>No. It has no camera and no microphone, and it only ever reads a public list of aircraft
+        positions. The one thing it knows about this room is the coordinates someone typed in.</p>
+      </div>
+      <div>
+        <h4>Why is that plane so low?</h4>
+        <p>Altitude is above sea level, not above the car park. Around here the ground is already
+        about 5,000 ft up, so a light aircraft in the pattern reads 6,000-something.</p>
+      </div>
+      <div>
+        <h4>Please leave it plugged in</h4>
+        <p>It is not a phone charger. Pulling the cable costs it a minute of finding the network and
+        the sky again — and the room loses its favourite distraction.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div>
+      <b>Firmware by Erik Salo</b> — github.com/eriksalo/flightscnr-p4 — built on FlightScnr by
+      yashmulgaonkar and ported to this round ESP32-P4 display.
+      Traffic from adsb.fi · aircraft database from tar1090-db · towns from GeoNames · weather from Tomorrow.io.
+    </div>
+    <div>CC BY-NC-SA 4.0</div>
+  </footer>
+</section>
+
+</body>
+</html>
