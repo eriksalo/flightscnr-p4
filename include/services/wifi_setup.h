@@ -12,9 +12,14 @@ bool wifiSetupConnect();
  *  the setup portal (keeps saved networks) so a new network can be added. */
 bool wifiReconnect();
 
-/** Open the setup portal on demand, keeping every saved network: use this to
- *  join a different Wi-Fi when the current one is unavailable, which is
- *  otherwise impossible without the LAN the web page lives on. Gives up after
+/** Open the on-device touch Wi-Fi setup (scan list + on-screen keyboard) on
+ *  demand, keeping every saved network. Reboots onto the new network on
+ *  success; otherwise gives up after config::kWifiOnDemandPortalTimeoutSec of
+ *  inactivity and reconnects, so an accidental trigger recovers by itself. */
+bool wifiOpenTouchSetupOnDemand();
+
+/** Open the SoftAP web portal on demand, keeping every saved network (the
+ *  phone-browser fallback of the touch setup screen). Gives up after
  *  config::kWifiOnDemandPortalTimeoutSec and reconnects, so an accidental
  *  trigger recovers by itself. Returns true if a network was configured. */
 bool wifiOpenSetupPortalOnDemand();

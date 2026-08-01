@@ -22,6 +22,7 @@
 #include "ui/boot_screens.h"
 #include "ui/flight_detail_screen.h"
 #include "ui/radar_display.h"
+#include "ui/wifi_setup_screen.h"
 
 namespace {
 
@@ -944,7 +945,7 @@ bool waitForLinkWithUi(const char* ssid_for_ui, unsigned long attempt_ms) {
   return wifiLinkUp();
 }
 
-bool tryConnectOneSlot(uint8_t index, bool show_ui) {
+bool tryConnectOneSlot(uint8_t index, bool show_ui, bool scan_gate = true) {
   if (index >= s_nets_count) {
     return false;
   }
@@ -955,9 +956,11 @@ bool tryConnectOneSlot(uint8_t index, bool show_ui) {
     bootScreenConnectingStart(ssid);
   }
 
-  // Soft skip when a scan finds no matching BSSID (e.g. office SSID while at home).
+  // Soft skip when a scan finds no matching BSSID (e.g. office SSID while at
+  // home). Disabled for a network the user just picked or typed on the touch
+  // setup screen — a hidden SSID never shows up in a scan.
   prepareSta();
-  if (!ssidSeenInScan(ssid)) {
+  if (scan_gate && !ssidSeenInScan(ssid)) {
     Serial.printf("[wifi] SSID not in scan, skipping for now: %s\n", ssid);
     if (show_ui) {
       bootScreenConnectingStart(ssid);
@@ -1100,7 +1103,108 @@ bool runConfigPortalFlow() {
   return false;
 }
 
+/**
+ * Touch-first Wi-Fi setup on the device screen: scan list → tap a network →
+ * on-screen keyboard → save & connect. Loops until connected; a failed join
+ * reopens the keyboard with the password preserved so a typo is a quick fix.
+ * "Use phone" hands off to the old SoftAP web portal.
+ *
+ * boot_mode: at boot there is nothing to cancel back to, so Cancel retries the
+ * saved networks instead; on success the caller continues booting (no reboot).
+ * Mid-run (on-demand hold / reconnect fallback) a successful join reboots so
+ * every service restarts cleanly on the new link — and Cancel returns false.
+ */
+bool runTouchSetupFlow(bool boot_mode) {
+  char ssid[33] = "";
+  char pass[65] = "";
+  char status[96] = "";
+  bool retry_keyboard = false;
+
+  for (;;) {
+    ui::WifiPickOptions opts;
+    opts.status = status[0] != '\0' ? status : nullptr;
+    opts.boot_mode = boot_mode;
+    opts.idle_timeout_ms =
+        boot_mode ? 0 : config::kWifiOnDemandPortalTimeoutSec * 1000UL;
+    if (retry_keyboard) {
+      opts.retry_ssid = ssid;
+      opts.retry_pass = pass;
+    }
+    retry_keyboard = false;
+
+    const ui::WifiPickResult r =
+        ui::wifiSetupScreenPick(opts, ssid, sizeof(ssid), pass, sizeof(pass));
+
+    if (r == ui::WifiPickResult::Cancelled) {
+      if (!boot_mode) {
+        return false;
+      }
+      // Boot: "Retry saved" — try the stored networks again, else reopen.
+      if (wifiTryConnectPreferred(true)) {
+        return true;
+      }
+      snprintf(status, sizeof(status), "Saved networks unreachable");
+      continue;
+    }
+
+    if (r == ui::WifiPickResult::WebPortal) {
+      if (boot_mode) {
+        return runConfigPortalFlow();  // reboots on success
+      }
+      return wifiOpenSetupPortalOnDemand();  // reboots on success
+    }
+
+    char err[96] = "";
+    if (!wifiNetsAddOrUpdate(ssid, pass, err, sizeof(err))) {
+      ensureNetsLoaded();
+      if (s_nets_count >= config::kWifiMaxNetworks) {
+        // Store full with a new SSID: replace the lowest-preference slot so
+        // the network the user is standing next to always wins.
+        wifiNetsRemove(config::kWifiMaxNetworks - 1);
+      }
+      if (!wifiNetsAddOrUpdate(ssid, pass, err, sizeof(err))) {
+        snprintf(status, sizeof(status), "%s",
+                 err[0] != '\0' ? err : "Could not save network");
+        continue;
+      }
+    }
+
+    Serial.printf("[wifi] touch setup joining: %s\n", ssid);
+    const int idx = findNetIndexBySsid(ssid);
+    if (idx >= 0 &&
+        tryConnectOneSlot(static_cast<uint8_t>(idx), true, /*scan_gate=*/false)) {
+      Serial.printf("Connected: %s  IP %s\n", WiFi.SSID().c_str(),
+                    WiFi.localIP().toString().c_str());
+      if (boot_mode) {
+        return true;
+      }
+      Serial.println("WiFi configured — rebooting");
+      delay(400);
+      esp_restart();
+      return true;
+    }
+
+    snprintf(status, sizeof(status), "Could not join %s", ssid);
+    retry_keyboard = true;
+  }
+}
+
 }  // namespace
+
+bool wifiOpenTouchSetupOnDemand() {
+  Serial.println("[wifi] on-demand touch Wi-Fi setup requested");
+  services::adsb::cancelPendingFetch();
+
+  // Reboots on success (or when the flow hands off to the web portal and that
+  // succeeds), so reaching the next line means no new network was configured.
+  runTouchSetupFlow(false);
+
+  Serial.println("[wifi] touch setup closed with no new network");
+  if (!wifiLinkUp()) {
+    wifiTryConnectPreferred(true);
+  }
+  return false;
+}
 
 bool wifiOpenSetupPortalOnDemand() {
   Serial.println("[wifi] on-demand setup portal requested");
@@ -1290,9 +1394,9 @@ bool wifiReconnect() {
   migrateStaIntoNetsIfNeeded();
   ensureNetsLoaded();
   if (s_nets_count == 0 && !readStaCredentials(nullptr, nullptr)) {
-    Serial.println("No saved WiFi — opening setup portal");
+    Serial.println("No saved WiFi — opening touch setup");
     s_reconnect_fail_rounds = 0;
-    return runConfigPortalFlow();
+    return runTouchSetupFlow(false);
   }
 
   if (wifiTryConnectPreferred(false)) {
@@ -1308,11 +1412,10 @@ bool wifiReconnect() {
                 static_cast<unsigned>(config::kWifiPortalAfterReconnectFails));
 
   if (s_reconnect_fail_rounds >= config::kWifiPortalAfterReconnectFails) {
-    Serial.println("Opening WiFi setup portal (reconnect failed repeatedly; "
+    Serial.println("Opening touch Wi-Fi setup (reconnect failed repeatedly; "
                    "saved networks kept)");
     s_reconnect_fail_rounds = 0;
-    bootScreenShowPortalHint();
-    return runConfigPortalFlow();
+    return runTouchSetupFlow(false);
   }
   return false;
 }
@@ -1338,8 +1441,8 @@ bool wifiSetupConnect() {
   }
 
   if (force_portal) {
-    Serial.println("Opening WiFi setup portal (after reset)");
-    if (runConfigPortalFlow()) {
+    Serial.println("Opening touch Wi-Fi setup (after reset)");
+    if (runTouchSetupFlow(true)) {
       return true;
     }
     Serial.println("WiFi connection failed");
@@ -1368,13 +1471,12 @@ bool wifiSetupConnect() {
 
   ensureNetsLoaded();
   if (s_nets_count > 0) {
-    Serial.println("Saved WiFi could not connect, opening setup portal");
+    Serial.println("Saved WiFi could not connect, opening touch setup");
   } else {
-    Serial.println("No saved WiFi, opening setup portal");
+    Serial.println("No saved WiFi, opening touch setup");
   }
-  bootScreenShowPortalHint();
 
-  if (runConfigPortalFlow()) {
+  if (runTouchSetupFlow(true)) {
     return true;
   }
 
