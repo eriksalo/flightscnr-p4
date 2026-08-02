@@ -37,9 +37,12 @@ framebuffer, not a mock-up.)*
 - **Aircraft tags** — callsign, ICAO type and altitude beside every aircraft on the scope, in 4 pt
   type so labels fit without hiding the picture. Altitude is always feet; cyan means level or
   climbing, magenta descending.
-- **Town underlay** — a dim slate map of nearby populated places sits beneath the grid for
-  geographic context: most-populous first, labels dropped where they would collide, capped so a wide
-  range over a metro does not bury the scope. Toggle it on the web page ("Show town underlay").
+- **Map underlay** — a dim shaded-relief map sits beneath the grid: hypsometric terrain with
+  hillshading, named lakes and reservoirs, rivers, and major roads, plus town names. Everything stays
+  well below the instrument in brightness — the mountains rise to one side, the plains stretch out on
+  the other, and a glance orients the traffic. Town labels are placed most-populous first, dropped
+  where they would collide, and capped so a wide range over a metro does not bury the scope. Toggle
+  it on the web page ("Show map underlay").
 - **Traffic source** — [adsb.fi](https://adsb.fi) by default (~2 s poll, up to 64 aircraft), or point
   it at a **local receiver** (readsb / tar1090 `aircraft.json`) over plain LAN HTTP to skip the
   internet entirely.
@@ -193,17 +196,22 @@ rate, and gaps between lines expose loop stalls.
 
 Font headers are generated with `tools/ttf_to_gfxfont.py` (needs `pip install freetype-py`).
 
-The town underlay ships as a **regional** extract — the radar never draws past 30 mi, so a worldwide
-gazetteer would be wasted flash. The committed header covers the maintainer's area; regenerate it for
-yours (it downloads GeoNames cities1000 once and caches it):
+The map underlay ships as **regional** extracts — the radar never draws past 30 mi, so worldwide
+data would be wasted flash. The committed headers cover the maintainer's area; regenerate them for
+yours (downloads are cached next to the tools):
 
 ```bash
 python tools/generate_towns.py --center 40.13,-105.18 --radius-km 400
 python tools/generate_towns.py --min-pop 5000            # fewer, larger towns
+python tools/generate_map.py   --center 40.13,-105.18    # terrain, water, roads
 ```
 
-With no `--center` it uses `config::kFactoryLatitude/Longitude`. A radar center outside the extract
-simply draws no towns.
+With no `--center`, `generate_towns.py` uses `config::kFactoryLatitude/Longitude` and
+`generate_map.py` reuses the committed towns anchor. Both blur the center to 0.1° before it is
+written into the tree. A radar center outside the extracts simply draws a plain scope.
+`generate_map.py` pulls elevation from AWS Terrain Tiles and roads/water from the Overpass API; the
+hypsometric color ramp in `src/ui/map_underlay.cpp` (`kHypsoStops`) is tuned for Front Range
+elevations — adjust the stops if your region lives at very different altitudes.
 
 ## Differences from upstream FlightScnr
 
@@ -248,6 +256,8 @@ by MatixYo and [deskradar](https://github.com/arvis91/deskradar) by arvis91.
 | [tar1090-db](https://github.com/wiedehopf/tar1090-db) (wiedehopf) | Aircraft type and registration database |
 | [Airports](https://github.com/mwgg/Airports) (mwgg) | Airport names and coordinates |
 | [GeoNames](https://www.geonames.org/) cities1000 | Town names and coordinates for the map underlay (CC BY 4.0) |
+| [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) | Elevation for the shaded-relief underlay |
+| [OpenStreetMap](https://www.openstreetmap.org/) via Overpass API | Roads, rivers and lakes for the map underlay (ODbL) |
 | [timeapi.io](https://timeapi.io) | Timezone and DST from coordinates |
 | [Tomorrow.io](https://www.tomorrow.io/) | Weather and forecast (optional) |
 | [AirLabs](https://airlabs.co/), [FlightAware](https://www.flightaware.com/aeroapi/), [FR24](https://fr24api.flightradar24.com/) | Route and airline lookup (optional) |

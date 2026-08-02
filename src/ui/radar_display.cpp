@@ -18,6 +18,7 @@
 #include "services/map_center.h"
 #include "ui/aircraft_icon.h"
 #include "ui/aircraft_symbol.h"
+#include "ui/map_underlay.h"
 #include "ui/radar_accent.h"
 #include "ui/radar_scale.h"
 #include "ui/radar_theme.h"
@@ -779,6 +780,9 @@ void drawTownUnderlay() {
   displayFontApply(*s_draw, s_tag_style);
   s_draw->setTextDatum(TextDatum::TopLeft);
   const int line_h = s_draw->fontHeight();
+  // Over the terrain underlay the labels must not fill their glyph cells with
+  // the flat background color; on a plain scope the fill is equivalent anyway.
+  const bool over_map = map_underlay::available();
 
   IntRect placed[radar::kMaxTownLabels];
   int placed_count = 0;
@@ -826,7 +830,11 @@ void drawTownUnderlay() {
 
     s_draw->fillCircle(static_cast<int16_t>(x), static_cast<int16_t>(y),
                        static_cast<int16_t>(radar::kTownDotRadiusPx), radar::kColorMapDot);
-    s_draw->setTextColor(radar::kColorMapLabel, radar::kColorBackground);
+    if (over_map) {
+      s_draw->setTextColor(radar::kColorMapLabel);
+    } else {
+      s_draw->setTextColor(radar::kColorMapLabel, radar::kColorBackground);
+    }
     s_draw->drawString(town.name, static_cast<int16_t>(label.x),
                        static_cast<int16_t>(label.y));
 
@@ -849,6 +857,7 @@ void drawStaticGrid(GfxRef& gfx) {
 
   gfx.fillScreen(radar::kColorBackground);
   if (displayPrefsMapUnderlayEnabled()) {
+    map_underlay::draw(*s_draw);  // shaded relief, water and roads first
     drawTownUnderlay();  // beneath the rings: the map is context, not instrument
   }
   drawRings(cx, cy, grid_r);

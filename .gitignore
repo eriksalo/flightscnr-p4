@@ -29,5 +29,9 @@ reference/
 # GeoNames gazetteer cache for tools/generate_towns.py (10 MB, regenerated on demand)
 tools/cities1000.txt
 
+# Terrain tile / Overpass caches for tools/generate_map.py (regenerated on demand)
+tools/map_tiles/
+tools/map_osm/
+
 # Claude Code local state and its scratch worktrees (each carries its own .pio/)
 .claude/

@@ -357,7 +357,7 @@ void handleSettingsPage() {
   }
   appendToggle(page, kSettingsPageCap, &used, "show_sweep", "Show radar sweep line",
                ui::displayPrefsSweepLineEnabled());
-  appendToggle(page, kSettingsPageCap, &used, "map_underlay", "Show town underlay",
+  appendToggle(page, kSettingsPageCap, &used, "map_underlay", "Show map underlay (terrain and towns)",
                ui::displayPrefsMapUnderlayEnabled());
 
   appendRaw(page, kSettingsPageCap, &used, "</div></details>");
