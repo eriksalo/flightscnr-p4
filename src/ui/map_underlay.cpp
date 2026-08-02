@@ -43,16 +43,24 @@ constexpr uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) {
   return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
 }
 constexpr uint16_t kColorRiver = rgb565(18, 50, 70);
+constexpr uint16_t kColorStream = rgb565(14, 42, 58);
 constexpr uint16_t kColorMotorway = rgb565(56, 60, 66);
 constexpr uint16_t kColorPrimary = rgb565(37, 41, 46);
+constexpr uint16_t kColorSecondary = rgb565(27, 31, 36);
+constexpr uint16_t kColorRunway = rgb565(104, 110, 120);
 constexpr float kRiverHalfWidth = 0.9f;
+constexpr float kStreamHalfWidth = 0.6f;
 constexpr float kMotorwayHalfWidth = 1.1f;
 constexpr float kPrimaryHalfWidth = 0.6f;
+constexpr float kSecondaryHalfWidth = 0.5f;
+constexpr float kRunwayHalfWidth = 1.7f;
 
-/** Primary arterials only appear zoomed in: at metro-wide ranges they read as
- *  street-grid noise (and cost ~12k paths per background rebuild); motorways,
- *  trunks and rivers carry the orientation at every range. */
-constexpr float kPrimaryMaxRangeKm = 20.0f;
+/** Detail layers only appear zoomed in: at metro-wide ranges the arterial
+ *  street grid and every creek read as noise (and cost thousands of paths per
+ *  background rebuild). Motorways, trunks, rivers and runways carry the
+ *  orientation at every range. */
+constexpr float kPrimaryMaxRangeKm = 20.0f;   // 10 mi and closer
+constexpr float kDetailMaxRangeKm = 13.5f;    // 8 mi and closer
 
 /** Terrain fills the scope out to the outer grid ring, fading to the plain
  *  background over the last pixels so the dashed ring sits on quiet ground.
@@ -304,22 +312,29 @@ void drawPaths(PlaneGfx& gfx) {
   // Quick-reject box in km around the visible disc.
   const float cull_km = kVectorClipRadiusPx / px_per_km + 1.0f;
 
-  // Rivers under roads, primaries under motorways at crossings.
-  constexpr uint8_t kKindOrder[] = {data::map::kPathRiver, data::map::kPathPrimary,
-                                    data::map::kPathMotorway};
-  for (const uint8_t kind : kKindOrder) {
-    if (kind == data::map::kPathPrimary && outer_km > kPrimaryMaxRangeKm) {
+  // Water under roads, minor under major at crossings; runways on top.
+  struct KindStyle {
+    uint8_t kind;
+    float half_width;
+    uint16_t color;
+    float max_range_km;  // 0 = every range
+  };
+  constexpr KindStyle kKindOrder[] = {
+      {data::map::kPathStream, kStreamHalfWidth, kColorStream, kDetailMaxRangeKm},
+      {data::map::kPathRiver, kRiverHalfWidth, kColorRiver, 0.0f},
+      {data::map::kPathSecondary, kSecondaryHalfWidth, kColorSecondary,
+       kDetailMaxRangeKm},
+      {data::map::kPathPrimary, kPrimaryHalfWidth, kColorPrimary, kPrimaryMaxRangeKm},
+      {data::map::kPathMotorway, kMotorwayHalfWidth, kColorMotorway, 0.0f},
+      {data::map::kPathRunway, kRunwayHalfWidth, kColorRunway, 0.0f},
+  };
+  for (const KindStyle& style : kKindOrder) {
+    if (style.max_range_km > 0.0f && outer_km > style.max_range_km) {
       continue;
     }
-    float half_width = kPrimaryHalfWidth;
-    uint16_t color = kColorPrimary;
-    if (kind == data::map::kPathRiver) {
-      half_width = kRiverHalfWidth;
-      color = kColorRiver;
-    } else if (kind == data::map::kPathMotorway) {
-      half_width = kMotorwayHalfWidth;
-      color = kColorMotorway;
-    }
+    const uint8_t kind = style.kind;
+    const float half_width = style.half_width;
+    const uint16_t color = style.color;
 
     for (size_t p = 0; p < data::map::kPathCount; ++p) {
       const data::map::Path& path = data::map::kPaths[p];
