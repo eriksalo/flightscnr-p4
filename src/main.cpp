@@ -1853,6 +1853,14 @@ void tickAdsbFetch() {
 
 void setup() {
   Serial.begin(115200);
+  // USB-Serial/JTAG console: when the COM port is attached but nothing drains
+  // it (monitor closed, half-open session after a flash), each write blocks up
+  // to ~2s (20 x 100ms HWCDC timeouts). With this firmware's debug chatter that
+  // freezes the loop for 10-20s per iteration — sweep stalls, touch goes dead.
+  // A 2KB ring absorbs whole [diag] lines without truncation while a monitor
+  // is attached; the 1ms timeout bounds an unread-port write at ~20ms.
+  Serial.setTxBufferSize(2048);
+  Serial.setTxTimeoutMs(1);
   delay(500);
   Serial.println();
   Serial.printf("[heap] setup entry: %u internal free, %u largest\n",
