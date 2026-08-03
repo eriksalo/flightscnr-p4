@@ -103,6 +103,12 @@ border:1px solid var(--fline);transition:.18s;pointer-events:none;}
 width:1.05rem;height:1.05rem;border-radius:50%;background:#9a9a9a;transition:.18s;}
 .switch input:checked + .track{background:var(--accent);border-color:var(--accent2);}
 .switch input:checked + .track::after{left:1.32rem;background:#fff;}
+.days{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0 0;}
+.days label{margin:0;flex:none;cursor:pointer;}
+.days input{position:absolute;opacity:0;width:1px;height:1px;}
+.days .pill{display:inline-block;padding:.35rem .6rem;border-radius:999px;font-size:.8rem;
+background:#262626;border:1px solid var(--fline);color:#bbb;}
+.days input:checked + .pill{background:var(--accent);border-color:var(--accent2);color:#fff;}
 .api{border:1px solid var(--line);border-radius:11px;padding:.2rem .8rem .8rem;margin:.8rem 0;background:var(--card2);}
 .api .api-head{display:flex;align-items:center;gap:.6rem;padding:.65rem 0 0;}
 .api .api-head .name{font-weight:600;font-size:.92rem;}
@@ -421,43 +427,60 @@ void handleSettingsPage() {
 
   appendRaw(page, kSettingsPageCap, &used, "</div></details>");
 
-  // ---------- Off-Hours card ----------
+  // ---------- Schedule card ----------
   appendRaw(page, kSettingsPageCap, &used,
             "<details class=\"card\"><summary><span class=\"ico\">&#9790;</span>"
-            "Off-Hours<span class=\"sum\">night mode schedule</span>"
+            "Schedule<span class=\"sum\">active hours &amp; sleep</span>"
             "<span class=\"chev\">&#9656;</span></summary><div class=\"body\">");
-  appendToggle(page, kSettingsPageCap, &used, "night_en", "Enable off-hours (night mode)",
+  appendToggle(page, kSettingsPageCap, &used, "sch_en", "Sleep outside active hours",
                services::offhours::enabled());
   {
-    const auto night_mode = services::offhours::mode();
-    const int nm = snprintf(
-        page + used, kSettingsPageCap - used,
-        "<label for=\"night_mode\">During off-hours</label>"
-        "<select id=\"night_mode\" name=\"night_mode\">"
-        "<option value=\"0\"%s>Dim clock (20%%)</option>"
-        "<option value=\"1\"%s>Turn off display</option>"
-        "</select>",
-        night_mode == services::offhours::Mode::Dim ? " selected" : "",
-        night_mode == services::offhours::Mode::DisplayOff ? " selected" : "");
-    if (nm > 0) appendClamped(page, kSettingsPageCap, &used, nm);
-  }
-  {
-    const uint16_t start = services::offhours::startMinute();
-    const uint16_t end = services::offhours::endMinute();
+    const uint16_t start = services::offhours::awakeStartMinute();
+    const uint16_t end = services::offhours::awakeEndMinute();
     const int nt = snprintf(
         page + used, kSettingsPageCap - used,
         "<div class=\"row2\">"
-        "<div><label for=\"night_start\">Start</label>"
-        "<input type=\"time\" id=\"night_start\" name=\"night_start\" value=\"%02u:%02u\"></div>"
-        "<div><label for=\"night_end\">End</label>"
-        "<input type=\"time\" id=\"night_end\" name=\"night_end\" value=\"%02u:%02u\"></div>"
+        "<div><label for=\"sch_start\">Active from</label>"
+        "<input type=\"time\" id=\"sch_start\" name=\"sch_start\" value=\"%02u:%02u\"></div>"
+        "<div><label for=\"sch_end\">Until</label>"
+        "<input type=\"time\" id=\"sch_end\" name=\"sch_end\" value=\"%02u:%02u\"></div>"
         "</div>",
         start / 60, start % 60, end / 60, end % 60);
     if (nt > 0) appendClamped(page, kSettingsPageCap, &used, nt);
   }
+  {
+    static const char* kDayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    const uint8_t days = services::offhours::awakeDayMask();
+    appendRaw(page, kSettingsPageCap, &used,
+              "<label>Active days</label><div class=\"days\">");
+    for (int d = 0; d < 7; ++d) {
+      const int nd = snprintf(
+          page + used, kSettingsPageCap - used,
+          "<label><input type=\"checkbox\" name=\"sch_d%d\" value=\"T\"%s>"
+          "<span class=\"pill\">%s</span></label>",
+          d, (days & (1u << d)) ? " checked" : "", kDayNames[d]);
+      if (nd > 0) appendClamped(page, kSettingsPageCap, &used, nd);
+    }
+    appendRaw(page, kSettingsPageCap, &used, "</div>");
+  }
+  {
+    const auto sleep_mode = services::offhours::mode();
+    const int nm = snprintf(
+        page + used, kSettingsPageCap - used,
+        "<label for=\"sch_mode\">While sleeping</label>"
+        "<select id=\"sch_mode\" name=\"sch_mode\">"
+        "<option value=\"2\"%s>Sleep message (touch to wake)</option>"
+        "<option value=\"0\"%s>Dim clock (20%%)</option>"
+        "<option value=\"1\"%s>Turn off display</option>"
+        "</select>",
+        sleep_mode == services::offhours::Mode::SleepMessage ? " selected" : "",
+        sleep_mode == services::offhours::Mode::Dim ? " selected" : "",
+        sleep_mode == services::offhours::Mode::DisplayOff ? " selected" : "");
+    if (nm > 0) appendClamped(page, kSettingsPageCap, &used, nm);
+  }
   appendRaw(page, kSettingsPageCap, &used,
-            "<p class=\"note\">During off-hours the device shows a dim clock or turns off the "
-            "display. All API calls are paused. Knob press wakes the device.</p>");
+            "<p class=\"note\">Outside active hours all API calls pause and the radar sleeps. "
+            "Touching the screen wakes it for 1 hour.</p>");
   appendRaw(page, kSettingsPageCap, &used, "</div></details>");
 
   // ---------- Sound card ----------
@@ -852,10 +875,18 @@ void handleSave() {
   const bool auto_tz_before = services::clock::useAutoTimezone();
   services::clock::saveAutoTimezoneFromForm(s_server->arg("auto_timezone").c_str());
   ui::radar::accentSaveFromForm(s_server->arg("radar_accent").c_str());
-  services::offhours::saveFromForm(s_server->arg("night_en").c_str(),
-                                   s_server->arg("night_mode").c_str(),
-                                   s_server->arg("night_start").c_str(),
-                                   s_server->arg("night_end").c_str());
+  uint8_t sch_day_mask = 0;
+  for (int d = 0; d < 7; ++d) {
+    char day_key[8];
+    snprintf(day_key, sizeof(day_key), "sch_d%d", d);
+    if (s_server->arg(day_key) == "T") {
+      sch_day_mask |= static_cast<uint8_t>(1u << d);
+    }
+  }
+  services::offhours::saveFromForm(s_server->arg("sch_en").c_str(),
+                                   s_server->arg("sch_mode").c_str(),
+                                   s_server->arg("sch_start").c_str(),
+                                   s_server->arg("sch_end").c_str(), sch_day_mask);
   const bool watch_arg_present = s_server->hasArg("alert_watch");
   char watch_form[160] = "";
   if (watch_arg_present) {

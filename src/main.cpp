@@ -44,6 +44,7 @@
 #include "ui/radar_display.h"
 #include "ui/radar_scale.h"
 #include "ui/radar_theme.h"
+#include "ui/sleep_screen.h"
 #include "ui/weather_screen.h"
 
 namespace {
@@ -714,6 +715,11 @@ void applySettingsLive() {
   hardware::displayApplyBrightness();
   g_last_adsb_fetch_ms = 0;
 
+  // Re-evaluate the sleep schedule next loop; clearing the active flag makes
+  // the enter edge re-fire so a saved-while-asleep config redraws sleep mode.
+  g_off_hours_last_check_ms = 0;
+  g_off_hours_active = false;
+
   switch (g_screen) {
     case AppScreen::Radar:
       if (WiFi.status() == WL_CONNECTED) {
@@ -1189,7 +1195,8 @@ void tickSecondaryScreenTimeout() {
 
 void tickOffHours() {
   const unsigned long now = millis();
-  if (now - g_off_hours_last_check_ms < config::kOffHoursCheckIntervalMs) {
+  if (g_off_hours_last_check_ms != 0 &&
+      now - g_off_hours_last_check_ms < config::kOffHoursCheckIntervalMs) {
     return;
   }
   g_off_hours_last_check_ms = now;
@@ -1209,12 +1216,18 @@ void tickOffHours() {
     const auto mode = services::offhours::mode();
     if (mode == services::offhours::Mode::DisplayOff) {
       displaySleep();
-      Serial.println("[offhours] entering night mode (display off)");
+      Serial.println("[offhours] entering sleep (display off)");
+    } else if (mode == services::offhours::Mode::SleepMessage) {
+      ui::flightDetailReleaseSprite();
+      g_radar_visible = false;
+      hardware::displayBrightnessOverride(20);
+      ui::sleepScreenEnter();
+      Serial.println("[offhours] entering sleep (message screen)");
     } else {
       g_screen = AppScreen::Clock;
       showClock();
       hardware::displayBrightnessOverride(20);
-      Serial.println("[offhours] entering night mode (dim)");
+      Serial.println("[offhours] entering sleep (dim clock)");
     }
   } else if (was_active && !is_active) {
     const auto mode = services::offhours::mode();
@@ -1227,7 +1240,7 @@ void tickOffHours() {
     if (WiFi.status() == WL_CONNECTED) {
       showRadar();
     }
-    Serial.println("[offhours] exiting night mode");
+    Serial.println("[offhours] exiting sleep (scheduled wake)");
   }
 }
 
@@ -1917,21 +1930,29 @@ void loop() {
   tickOffHours();
   if (g_off_hours_active) {
     inputPoll();
-    if (inputConsumeKnobPress() || inputConsumeScreenTap(nullptr, nullptr)) {
+    const bool touched = inputConsumeKnobPress() ||
+                         inputConsumeScreenTap(nullptr, nullptr) ||
+                         inputConsumeSwipe() != SwipeNone;
+    if (touched) {
       g_off_hours_active = false;
       if (services::offhours::mode() == services::offhours::Mode::DisplayOff) {
         displayWake();
       }
       hardware::displayBrightnessRestore();
-      g_off_hours_wake_override_until_ms = millis() + 5UL * 60UL * 1000UL;
+      inputDiscardPendingInteractions();
+      g_off_hours_wake_override_until_ms = millis() + config::kOffHoursWakeOverrideMs;
       g_screen = AppScreen::Radar;
       if (WiFi.status() == WL_CONNECTED) {
         showRadar();
       }
-      Serial.println("[offhours] manual wake (knob press, 5 min override)");
+      Serial.printf("[offhours] touch wake (%lu min override)\n",
+                    config::kOffHoursWakeOverrideMs / 60000UL);
     } else {
-      if (services::offhours::mode() == services::offhours::Mode::Dim) {
+      const auto mode = services::offhours::mode();
+      if (mode == services::offhours::Mode::Dim) {
         tickClockDisplay();
+      } else if (mode == services::offhours::Mode::SleepMessage) {
+        ui::sleepScreenTick();
       }
       settingsWebPoll();
       tickDiagLog();

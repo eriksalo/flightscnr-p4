@@ -253,10 +253,15 @@ constexpr uint32_t kMinContiguousHeapForWeather = 12000;
 /** Default unit system when the user has not overridden it (true = °F/imperial). */
 constexpr bool kWeatherUseImperialDefault = true;
 
-// --- Off-hours (night mode) ---
-constexpr uint16_t kOffHoursDefaultStartMin = 1320;  // 22:00
-constexpr uint16_t kOffHoursDefaultEndMin = 420;      // 07:00
+// --- Off-hours (sleep schedule) ---
+/** Default awake window: device runs 08:00-18:00 on scheduled days. */
+constexpr uint16_t kAwakeDefaultStartMin = 480;   // 08:00
+constexpr uint16_t kAwakeDefaultEndMin = 1080;    // 18:00
+/** Awake days bitmask, bit 0 = Sunday ... bit 6 = Saturday; default Mon-Fri. */
+constexpr uint8_t kAwakeDefaultDayMask = 0x3E;
 constexpr unsigned long kOffHoursCheckIntervalMs = 60000;  // RTC poll every 60s
+/** Touching the screen during sleep wakes the device for this long. */
+constexpr unsigned long kOffHoursWakeOverrideMs = 60UL * 60UL * 1000UL;  // 1 hour
 
 // --- FreeRTOS core affinity (ESP32-S3: 0 = PRO_CPU / WiFi, 1 = APP_CPU / UI) ---
 /** HTTPS workers, WiFi event callbacks, mbedTLS — keep off the render loop core. */
