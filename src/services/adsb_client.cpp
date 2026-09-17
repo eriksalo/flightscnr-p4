@@ -12,6 +12,7 @@
 
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 #include <Preferences.h>
@@ -150,43 +151,180 @@ struct PsramPayload {
 // Read the full HTTP body with explicit connected()/available() waiting. Streaming
 // ArduinoJson straight off the TLS socket is unreliable (momentary gaps look like
 // EOF -> IncompleteInput on large responses), so we buffer first, then filter-parse.
-bool readHttpPayload(HTTPClient& http, PsramPayload* payload, uint32_t timeout_ms) {
+//
+// getSize() < 0 means the length is unknown. adsb.fi (behind Cloudflare) serves the
+// aircraft list to HTTP/1.1 clients with Transfer-Encoding: chunked on a keep-alive
+// socket, and getStreamPtr() hands us the RAW socket, chunk-size lines and all.
+// Without de-chunking, the server never closes the socket, the read loop sits until
+// the deadline and every poll fails — the radar shows no traffic and idles to the
+// clock. Same fix as services/weather.cpp readHttpPayload().
+//
+// *body_complete is set when the body ended cleanly (Content-Length satisfied, or
+// the terminating 0-length chunk was seen), i.e. the keep-alive socket is clean
+// and safe to reuse for the next poll.
+bool readHttpPayload(HTTPClient& http, PsramPayload* payload, uint32_t timeout_ms,
+                     bool* body_complete) {
+  if (body_complete != nullptr) {
+    *body_complete = false;
+  }
   WiFiClient* stream = http.getStreamPtr();
   if (stream == nullptr || payload == nullptr) {
     return false;
   }
   const int content_len = http.getSize();
+  const bool chunked = content_len < 0;
   if (content_len > 0 && !payload->reserve(static_cast<size_t>(content_len) + 1)) {
     Serial.printf("[fetch] payload alloc failed (%d bytes)\n", content_len);
     return false;
   }
   const unsigned long deadline_ms = millis() + timeout_ms;
   uint8_t buf[512];
-  while (http.connected() || stream->available()) {
-    if (content_len > 0 && payload->len >= static_cast<size_t>(content_len)) {
-      break;  // Keep-alive: the server holds the socket open; don't wait for close.
-    }
-    if (millis() >= deadline_ms) {
-      if (config::kSerialTraceDebug) {
-        Serial.printf("[fetch] http read timeout (%ums)\n", timeout_ms);
-      }
+
+  auto timedOut = [&]() -> bool {
+    if (millis() < deadline_ms) {
       return false;
     }
-    if (stream->available() == 0) {
-      if (!http.connected()) {
-        break;
+    Serial.printf("[adsb] http read timeout (%ums, %u bytes so far, %s)\n", timeout_ms,
+                  static_cast<unsigned>(payload->len),
+                  chunked ? "chunked" : content_len > 0 ? "content-length" : "close-delimited");
+    return true;
+  };
+
+  if (!chunked) {
+    while (http.connected() || stream->available()) {
+      if (content_len > 0 && payload->len >= static_cast<size_t>(content_len)) {
+        break;  // Keep-alive: the server holds the socket open; don't wait for close.
+      }
+      if (timedOut()) {
+        return false;
+      }
+      if (stream->available() == 0) {
+        if (!http.connected()) {
+          break;
+        }
+        workerYield();
+        continue;
+      }
+      const size_t n = stream->readBytes(buf, sizeof(buf));
+      if (n == 0) {
+        workerYield();
+        continue;
+      }
+      if (!payload->append(buf, n)) {
+        Serial.println("[fetch] payload alloc failed (grow)");
+        return false;
+      }
+    }
+    if (body_complete != nullptr) {
+      *body_complete = content_len > 0 && payload->len >= static_cast<size_t>(content_len);
+    }
+    return payload->len > 0;
+  }
+
+  // --- Chunked transfer decoding (RFC 9112 §7.1) ---
+  auto readByte = [&](uint8_t* out) -> bool {
+    for (;;) {
+      if (timedOut()) {
+        return false;
+      }
+      if (stream->available() > 0) {
+        const int c = stream->read();
+        if (c >= 0) {
+          *out = static_cast<uint8_t>(c);
+          return true;
+        }
+      }
+      if (!http.connected() && stream->available() == 0) {
+        return false;
       }
       workerYield();
-      continue;
     }
-    const size_t n = stream->readBytes(buf, sizeof(buf));
-    if (n == 0) {
-      workerYield();
-      continue;
+  };
+  // Read one CRLF-terminated line (CR dropped, truncated to the buffer).
+  auto readLine = [&](char* line, size_t cap, size_t* out_len) -> bool {
+    size_t len = 0;
+    uint8_t c = 0;
+    while (readByte(&c)) {
+      if (c == '\n') {
+        line[len] = '\0';
+        *out_len = len;
+        return true;
+      }
+      if (c != '\r' && len + 1 < cap) {
+        line[len++] = static_cast<char>(c);
+      }
     }
-    if (!payload->append(buf, n)) {
-      Serial.println("[fetch] payload alloc failed (grow)");
+    return false;
+  };
+
+  for (;;) {
+    // Chunk-size line: hex, possibly followed by ";extensions". A stray empty
+    // line (e.g. CRLF left over from the previous chunk) is skipped, not treated
+    // as a 0-size terminator.
+    char size_line[32] = {};
+    size_t size_len = 0;
+    if (!readLine(size_line, sizeof(size_line), &size_len)) {
       return false;
+    }
+    if (size_len == 0) {
+      continue;
+    }
+    const long chunk_size = strtol(size_line, nullptr, 16);
+    if (chunk_size < 0) {
+      Serial.printf("[adsb] bad chunk size line '%s'\n", size_line);
+      return false;
+    }
+    if (chunk_size == 0) {
+      // Last chunk. Drain any trailer lines up to the blank line so the
+      // keep-alive socket starts clean, but only for as long as bytes are
+      // actually arriving — never stall a finished body on the trailer.
+      const unsigned long trailer_deadline = millis() + 250;
+      char trailer[8];
+      size_t trailer_len = 0;
+      while (millis() < trailer_deadline) {
+        if (stream->available() == 0) {
+          workerYield();
+          continue;
+        }
+        if (!readLine(trailer, sizeof(trailer), &trailer_len) || trailer_len == 0) {
+          break;
+        }
+      }
+      if (body_complete != nullptr) {
+        *body_complete = true;
+      }
+      break;
+    }
+    long remaining = chunk_size;
+    while (remaining > 0) {
+      if (timedOut()) {
+        return false;
+      }
+      if (stream->available() == 0) {
+        if (!http.connected()) {
+          return false;
+        }
+        workerYield();
+        continue;
+      }
+      const size_t want = remaining < static_cast<long>(sizeof(buf))
+                              ? static_cast<size_t>(remaining)
+                              : sizeof(buf);
+      const size_t got = stream->readBytes(buf, want);
+      if (got == 0) {
+        workerYield();
+        continue;
+      }
+      if (!payload->append(buf, got)) {
+        Serial.println("[fetch] payload alloc failed (chunk grow)");
+        return false;
+      }
+      remaining -= static_cast<long>(got);
+    }
+    // Consume the CRLF that follows the chunk data.
+    uint8_t c = 0;
+    if (readByte(&c) && c == '\r') {
+      readByte(&c);
     }
   }
   return payload->len > 0;
@@ -834,8 +972,10 @@ bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radiu
   // The TLS heap gate only matters for adsb.fi; the local plain-HTTP fetch
   // needs almost no internal RAM and should keep polling under TLS pressure.
   if (!local_src && !services::https::heapReadyForAdsb()) {
-    if (config::kSerialTraceDebug) {
-      Serial.printf("[fetch] skip heap free=%u max_blk=%u\n", ESP.getFreeHeap(),
+    static unsigned long s_last_skip_log_ms = 0;
+    if (config::kSerialTraceDebug || millis() - s_last_skip_log_ms >= 30000UL) {
+      s_last_skip_log_ms = millis();
+      Serial.printf("[adsb] fetch skipped: heap free=%u max_blk=%u\n", ESP.getFreeHeap(),
                     ESP.getMaxAllocHeap());
     }
     return false;
@@ -922,16 +1062,16 @@ bool fetchUpdateBlocking(double center_lat, double center_lon, float fetch_radiu
     return false;
   }
 
-  const int response_len = http.getSize();
   PsramPayload payload;
-  if (!readHttpPayload(http, &payload, kFetchHttpTimeoutMs + 4000U)) {
+  bool body_complete = false;
+  if (!readHttpPayload(http, &payload, kFetchHttpTimeoutMs + 4000U, &body_complete)) {
     teardownPollSession();
     services::https::drainTlsHeapAfterSession();
     return false;
   }
   http.end();  // reuse enabled: the socket stays connected for the next poll
-  if (response_len <= 0) {
-    // Close-delimited response (no Content-Length): the socket is spent.
+  if (!body_complete) {
+    // Close-delimited response (no Content-Length, not chunked): the socket is spent.
     teardownPollSession();
   }
 
