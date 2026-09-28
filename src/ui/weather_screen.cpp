@@ -72,15 +72,18 @@ void weekdayLabel(int64_t date_epoch, int index, char* out, size_t len) {
 void drawForecast(const services::weather::WeatherData& wx, uint16_t fg, uint16_t dim,
                   uint16_t accent, uint16_t bg) {
   const char unit = wx.imperial ? 'F' : 'C';
-  const int col_centers[services::weather::kForecastDays] = {kCenterX - 110, kCenterX,
-                                                             kCenterX + 110};
+  // 170px columns keep worst-case title-font temps ("100°F" ≈ 145px) from
+  // touching; rows sit in the widest band of the circle so all three columns
+  // clear the round edge.
+  const int col_centers[services::weather::kForecastDays] = {kCenterX - 170, kCenterX,
+                                                             kCenterX + 170};
   // Smaller icons leave room for the larger hi/lo temperature fonts.
   constexpr int kForecastIconSize = 72;
-  constexpr int kLabelY = 104;
-  constexpr int kIconY = 128;
-  constexpr int kHiY = 214;
-  constexpr int kLoY = 256;
-  constexpr int kRainY = 292;
+  constexpr int kLabelY = 208;
+  constexpr int kIconY = 244;
+  constexpr int kHiY = 334;
+  constexpr int kLoY = 386;
+  constexpr int kRainY = 428;
 
   for (int i = 0; i < services::weather::kForecastDays; ++i) {
     const services::weather::DayForecast& d = wx.days[i];

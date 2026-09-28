@@ -1025,12 +1025,28 @@ void handleScreenshot() {
   }
 }
 
+String s_nav_pending;
+
+/** Queue a screen change for the main loop (debug: pairs with /screenshot). */
+void handleNav() {
+  const String target = s_server->arg("s");
+  if (target.isEmpty()) {
+    s_server->send(400, "text/plain",
+                   "usage: /nav?s=radar|flight|details|settings|settings_display|"
+                   "settings_colors|clock|clock_settings|weather|orientation|sleep");
+    return;
+  }
+  s_nav_pending = target;
+  s_server->send(200, "text/plain", "queued: " + target);
+}
+
 void registerRoutes() {
   s_server->on("/", HTTP_GET, handleSettingsPage);
   s_server->on("/settings", HTTP_GET, handleSettingsPage);
   s_server->on("/save", HTTP_POST, handleSave);
   s_server->on("/route_cache.csv", HTTP_GET, handleRouteCacheDownload);
   s_server->on("/screenshot", HTTP_GET, handleScreenshot);
+  s_server->on("/nav", HTTP_GET, handleNav);
   s_server->on("/wifi/add", HTTP_POST, handleWifiAdd);
   s_server->on("/wifi/remove", HTTP_POST, handleWifiRemove);
   s_server->on("/wifi/up", HTTP_POST, handleWifiUp);
@@ -1040,6 +1056,12 @@ void registerRoutes() {
 }
 
 }  // namespace
+
+String settingsWebTakeNavRequest() {
+  const String req = s_nav_pending;
+  s_nav_pending = "";
+  return req;
+}
 
 void settingsWebStart() {
   if (WiFi.status() != WL_CONNECTED) {

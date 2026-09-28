@@ -936,6 +936,61 @@ void openFlightDetailFromRadar(int16_t tap_x, int16_t tap_y, bool from_screen_ta
   logNavContext("flight_detail");
 }
 
+// Debug navigation queued by GET /nav?s=<screen> so tools/device_screenshot.py
+// can capture every screen without touching the panel. Returns true when the
+// caller must end the loop iteration (sleep entered; the radar ticks below
+// would otherwise redraw over the sleep screen before the off-hours branch
+// takes over next iteration).
+bool tickNavRequest() {
+  const String req = settingsWebTakeNavRequest();
+  if (req.isEmpty()) {
+    return false;
+  }
+  Serial.printf("[nav] web request '%s'\n", req.c_str());
+  if (g_off_hours_active && req != "sleep") {
+    g_off_hours_active = false;
+    if (services::offhours::mode() == services::offhours::Mode::DisplayOff) {
+      displayWake();
+    }
+    hardware::displayBrightnessRestore();
+    g_off_hours_wake_override_until_ms = millis() + config::kOffHoursWakeOverrideMs;
+  }
+  if (req == "radar") {
+    returnToRadar(false, true);
+  } else if (req == "flight") {
+    openFlightDetailFromRadar(0, 0, false);
+  } else if (req == "details") {
+    openDetailsFromRadar();
+  } else if (req == "settings") {
+    openSettingsFromRadar();
+  } else if (req == "settings_display" || req == "settings_colors") {
+    ui::infoScreenSetPage(req == "settings_display" ? ui::InfoSettingsPage::Display
+                                                    : ui::InfoSettingsPage::Colors);
+    g_screen = AppScreen::Settings;
+    noteSecondaryActivity();
+    showSettings();
+  } else if (req == "clock") {
+    openClockFromRadar();
+  } else if (req == "clock_settings") {
+    openClockSettingsFromClock();
+  } else if (req == "weather") {
+    openWeatherFromClock();
+  } else if (req == "orientation") {
+    openOrientationAdjust(0);
+  } else if (req == "sleep") {
+    ui::flightDetailReleaseSprite();
+    g_radar_visible = false;
+    ui::sleepScreenEnter();
+    g_off_hours_active = true;
+    g_off_hours_last_check_ms = millis();
+    g_off_hours_wake_override_until_ms = 0;
+    return true;
+  } else {
+    Serial.printf("[nav] unknown screen '%s'\n", req.c_str());
+  }
+  return false;
+}
+
 void onFlightDetailStep(int8_t delta) {
   if (g_screen != AppScreen::FlightDetail || delta == 0) {
     return;
@@ -1963,6 +2018,7 @@ void loop() {
         ui::sleepScreenTick();
       }
       settingsWebPoll();
+      tickNavRequest();
       tickDiagLog();
       return;
     }
@@ -1972,6 +2028,9 @@ void loop() {
   if (bootScreenWifiResetCountdownActive()) {
     settingsWebPoll();
     tickDiagLog();
+    return;
+  }
+  if (tickNavRequest()) {
     return;
   }
   tickSecondaryScreenTimeout();
